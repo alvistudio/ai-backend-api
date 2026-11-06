@@ -20,7 +20,7 @@ def chat_ui():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AI Assistant - Claude Style</title>
+        <title>Dummy AI - OpenDev</title>
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
             body { background-color: #1e1e1e; color: #ececf1; display: flex; height: 100vh; overflow: hidden; }
@@ -48,7 +48,7 @@ def chat_ui():
             textarea { width: 100%; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 150px; }
             .input-footer { display: flex; justify-content: space-between; align-items: center; }
             .model-badge { font-size: 0.8rem; color: #8e8ea0; background: #1f1f1f; padding: 4px 8px; border-radius: 4px; border: 1px solid #383838; }
-            send-btn { background-color: #ececf1; color: #212121; border: none; border-radius: 6px; width: 32px; height: 32px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s; }
+            button { background-color: #ececf1; color: #212121; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
             button:hover { opacity: 0.85; }
             .loading { color: #8e8ea0; font-style: italic; }
         </style>
@@ -56,26 +56,26 @@ def chat_ui():
     <body>
         <!-- Sidebar -->
         <div class="sidebar">
-            <div class="sidebar-header">✨ AI Workspace</div>
-            <button class="new-chat-btn" onclick="location.reload()">+ নতুন চ্যাট শুরু করুন</button>
+            <div class="sidebar-header">✨ OpenDev AI</div>
+            <button class="new-chat-btn" onclick="location.reload()">+ New Chat</button>
         </div>
 
         <!-- Main Workspace -->
         <div class="main-container">
-            <div class="chat-header">Gemini Pro Assistant</div>
+            <div class="chat-header">Dummy AI Workspace</div>
             
             <div id="chat-container">
                 <div class="message-row">
-                    <div class="message ai-message">হ্যালো আলবি! আজ আপনাকে কীভাবে সাহায্য করতে পারি?</div>
+                    <div class="message ai-message">Hello! I am Dummy AI, created by OpenDev. How can I help you today?</div>
                 </div>
             </div>
 
             <div class="input-area">
                 <div class="input-box-wrapper">
-                    <textarea id="user-input" rows="1" placeholder="আপনার বার্তা এখানে লিখুন..." onkeypress="handleKeyPress(event)"></textarea>
+                    <textarea id="user-input" rows="1" placeholder="Type your message here..." onkeypress="handleKeyPress(event)"></textarea>
                     <div class="input-footer">
-                        <span class="model-badge">Gemini Flash</span>
-                        <button style="background: #19c37d; color: white; border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-weight: 600;" onclick="sendMessage()">পাঠান</button>
+                        <span class="model-badge">Dummy AI v1.0</span>
+                        <button style="background: #19c37d; color: white; padding: 6px 14px;" onclick="sendMessage()">Send</button>
                     </div>
                 </div>
             </div>
@@ -102,7 +102,7 @@ def chat_ui():
                 aiRow.className = 'message-row';
                 const aiMsg = document.createElement('div');
                 aiMsg.className = 'message ai-message loading';
-                aiMsg.innerText = 'উত্তর তৈরি হচ্ছে...';
+                aiMsg.innerText = 'Generating response...';
                 aiRow.appendChild(aiMsg);
                 chatContainer.appendChild(aiRow);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -116,10 +116,10 @@ def chat_ui():
                     const data = await response.json();
                     
                     aiMsg.classList.remove('loading');
-                    aiMsg.innerText = data.response || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
+                    aiMsg.innerText = data.response || "Sorry, no response received.";
                 } catch (error) {
                     aiMsg.classList.remove('loading');
-                    aiMsg.innerText = "সার্ভারে সংযোগ স্থাপন করতে সমস্যা হয়েছে।";
+                    aiMsg.innerText = "Error connecting to the server.";
                 }
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
@@ -138,9 +138,13 @@ def chat_ui():
 @app.post("/chat")
 def chat_with_ai(request: ChatRequest):
     try:
+        # সিস্টেম ইন্সট্রাকশন যুক্ত করা হলো যাতে মডেল সবসময় নিজেকে Dummy AI এবং OpenDev-এর তৈরি বলে পরিচয় দেয়
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=request.prompt,
+            config={
+                "system_instruction": "Your name is Dummy AI. You were created by OpenDev. Whenever someone asks about your name, identity, or who created you, you must state that your name is Dummy AI and you were created by OpenDev. Respond in the same language the user uses (e.g., if the user speaks in Bengali, reply in Bengali; if in English, reply in English)."
+            }
         )
         return {"response": response.text}
     except Exception as e:
