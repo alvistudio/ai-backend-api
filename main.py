@@ -6,14 +6,12 @@ from google import genai
 
 app = FastAPI()
 
-# Render-এর Environment Variable থেকে এপিআই কি রিড করা
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
 class ChatRequest(BaseModel):
     prompt: str
 
-# ব্রাউজারের জন্য প্রিমিয়াম চ্যাট ইন্টারফেস (HTML, CSS & JS)
 @app.get("/", response_class=HTMLResponse)
 def chat_ui():
     return """
@@ -22,31 +20,65 @@ def chat_ui():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AI Assistant - Gemini Powered</title>
+        <title>AI Assistant - Claude Style</title>
         <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-            body { background-color: #0D1117; color: #C9D1D9; display: flex; flex-direction: column; height: 100vh; justify-content: space-between; }
-            header { background-color: #161B22; padding: 15px 20px; text-align: center; border-bottom: 1px solid #30363D; font-size: 1.2rem; font-weight: bold; color: #58A6FF; }
-            #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-            .message { max-width: 75%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; word-wrap: break-word; font-size: 0.95rem; }
-            .user-message { background-color: #238636; color: #ffffff; align-self: flex-end; border-bottom-right-radius: 2px; }
-            .ai-message { background-color: #21262D; color: #C9D1D9; align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #30363D; }
-            .input-container { background-color: #161B22; padding: 15px 20px; display: flex; gap: 10px; border-top: 1px solid #30363D; }
-            input { flex: 1; background-color: #0D1117; border: 1px solid #30363D; border-radius: 8px; padding: 12px 15px; color: #C9D1D9; font-size: 1rem; outline: none; }
-            input:focus { border-color: #58A6FF; }
-            button { background-color: #238636; color: white; border: none; border-radius: 8px; padding: 0 20px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-            button:hover { background-color: #2ea043; }
-            .loading { font-style: italic; color: #8B949E; }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+            body { background-color: #1e1e1e; color: #ececf1; display: flex; height: 100vh; overflow: hidden; }
+            
+            /* Sidebar */
+            .sidebar { width: 260px; background-color: #171717; border-right: 1px solid #2f2f2f; display: flex; flex-direction: column; padding: 15px; }
+            .sidebar-header { font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+            .new-chat-btn { background-color: #2f2f2f; color: #fff; border: 1px solid #424242; padding: 10px; border-radius: 8px; text-align: left; cursor: pointer; font-size: 0.9rem; transition: background 0.2s; }
+            .new-chat-btn:hover { background-color: #383838; }
+
+            /* Main Chat Area */
+            .main-container { flex: 1; display: flex; flex-direction: column; justify-content: space-between; background-color: #212121; height: 100vh; }
+            .chat-header { padding: 15px 25px; border-bottom: 1px solid #2f2f2f; font-size: 1rem; color: #9b9b9b; background-color: #212121; }
+            
+            #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; max-width: 800px; width: 100%; margin: 0 auto; }
+            .message-row { display: flex; gap: 15px; width: 100%; }
+            .message-row.user { justify-content: flex-end; }
+            .message { padding: 12px 18px; border-radius: 12px; line-height: 1.6; font-size: 0.95rem; max-width: 75%; word-wrap: break-word; }
+            .user-message { background-color: #2f2f2f; color: #fff; border-top-right-radius: 2px; }
+            .ai-message { background-color: transparent; color: #ececf1; border-top-left-radius: 2px; padding-left: 0; }
+
+            /* Input Box Area */
+            .input-area { padding: 20px; background-color: #212121; display: flex; justify-content: center; }
+            .input-box-wrapper { max-width: 800px; width: 100%; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+            textarea { width: 100%; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 150px; }
+            .input-footer { display: flex; justify-content: space-between; align-items: center; }
+            .model-badge { font-size: 0.8rem; color: #8e8ea0; background: #1f1f1f; padding: 4px 8px; border-radius: 4px; border: 1px solid #383838; }
+            send-btn { background-color: #ececf1; color: #212121; border: none; border-radius: 6px; width: 32px; height: 32px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s; }
+            button:hover { opacity: 0.85; }
+            .loading { color: #8e8ea0; font-style: italic; }
         </style>
     </head>
     <body>
-        <header>✨ AI Assistant (Gemini)</header>
-        <div id="chat-container">
-            <div class="message ai-message">হ্যালো! আমি আপনার এআই অ্যাসিস্ট্যান্ট। আজ আপনাকে কীভাবে সাহায্য করতে পারি?</div>
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">✨ AI Workspace</div>
+            <button class="new-chat-btn" onclick="location.reload()">+ নতুন চ্যাট শুরু করুন</button>
         </div>
-        <div class="input-container">
-            <input type="text" id="user-input" placeholder="আপনার বার্তা এখানে লিখুন..." onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()">পাঠান</button>
+
+        <!-- Main Workspace -->
+        <div class="main-container">
+            <div class="chat-header">Gemini Pro Assistant</div>
+            
+            <div id="chat-container">
+                <div class="message-row">
+                    <div class="message ai-message">হ্যালো আলবি! আজ আপনাকে কীভাবে সাহায্য করতে পারি?</div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-box-wrapper">
+                    <textarea id="user-input" rows="1" placeholder="আপনার বার্তা এখানে লিখুন..." onkeypress="handleKeyPress(event)"></textarea>
+                    <div class="input-footer">
+                        <span class="model-badge">Gemini Flash</span>
+                        <button style="background: #19c37d; color: white; border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-weight: 600;" onclick="sendMessage()">পাঠান</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <script>
@@ -56,20 +88,23 @@ def chat_ui():
                 const text = inputField.value.trim();
                 if (!text) return;
 
-                // ইউজারের মেসেজ স্ক্রিনে যোগ করা
-                const userMsgDiv = document.createElement('div');
-                userMsgDiv.className = 'message user-message';
-                userMsgDiv.innerText = text;
-                chatContainer.appendChild(userMsgDiv);
+                // User Message
+                const userRow = document.createElement('div');
+                userRow.className = 'message-row user';
+                userRow.innerHTML = `<div class="message user-message">${text}</div>`;
+                chatContainer.appendChild(userRow);
 
                 inputField.value = '';
                 chatContainer.scrollTop = chatContainer.scrollHeight;
 
-                // লোডিং মেসেজ তৈরি করা
-                const loadingDiv = document.createElement('div');
-                loadingDiv.className = 'message ai-message loading';
-                loadingDiv.innerText = 'উত্তর তৈরি হচ্ছে...';
-                chatContainer.appendChild(loadingDiv);
+                // Loading message
+                const aiRow = document.createElement('div');
+                aiRow.className = 'message-row';
+                const aiMsg = document.createElement('div');
+                aiMsg.className = 'message ai-message loading';
+                aiMsg.innerText = 'উত্তর তৈরি হচ্ছে...';
+                aiRow.appendChild(aiMsg);
+                chatContainer.appendChild(aiRow);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
 
                 try {
@@ -80,24 +115,18 @@ def chat_ui():
                     });
                     const data = await response.json();
                     
-                    chatContainer.removeChild(loadingDiv);
-
-                    const aiMsgDiv = document.createElement('div');
-                    aiMsgDiv.className = 'message ai-message';
-                    aiMsgDiv.innerText = data.response || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
-                    chatContainer.appendChild(aiMsgDiv);
+                    aiMsg.classList.remove('loading');
+                    aiMsg.innerText = data.response || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
                 } catch (error) {
-                    chatContainer.removeChild(loadingDiv);
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'message ai-message';
-                    errorDiv.innerText = "সার্ভারে সংযোগ স্থাপন করতে সমস্যা হচ্ছে।";
-                    chatContainer.appendChild(errorDiv);
+                    aiMsg.classList.remove('loading');
+                    aiMsg.innerText = "সার্ভারে সংযোগ স্থাপন করতে সমস্যা হয়েছে।";
                 }
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
 
             function handleKeyPress(event) {
-                if (event.key === 'Enter') {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
                     sendMessage();
                 }
             }
@@ -106,7 +135,6 @@ def chat_ui():
     </html>
     """
 
-# চ্যাট এন্ডপয়েন্ট (যা জেমিনি থেকে উত্তর এনে দেবে)
 @app.post("/chat")
 def chat_with_ai(request: ChatRequest):
     try:
