@@ -25,24 +25,21 @@ def chat_ui():
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
             body { background-color: #1e1e1e; color: #ececf1; display: flex; height: 100vh; overflow: hidden; }
             
-            /* Sidebar */
             .sidebar { width: 260px; background-color: #171717; border-right: 1px solid #2f2f2f; display: flex; flex-direction: column; padding: 15px; }
             .sidebar-header { font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
             .new-chat-btn { background-color: #2f2f2f; color: #fff; border: 1px solid #424242; padding: 10px; border-radius: 8px; text-align: left; cursor: pointer; font-size: 0.9rem; transition: background 0.2s; }
             .new-chat-btn:hover { background-color: #383838; }
 
-            /* Main Chat Area */
             .main-container { flex: 1; display: flex; flex-direction: column; justify-content: space-between; background-color: #212121; height: 100vh; }
             .chat-header { padding: 15px 25px; border-bottom: 1px solid #2f2f2f; font-size: 1rem; color: #9b9b9b; background-color: #212121; }
             
             #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; max-width: 800px; width: 100%; margin: 0 auto; }
             .message-row { display: flex; gap: 15px; width: 100%; }
             .message-row.user { justify-content: flex-end; }
-            .message { padding: 12px 18px; border-radius: 12px; line-height: 1.6; font-size: 0.95rem; max-width: 75%; word-wrap: break-word; }
+            .message { padding: 12px 18px; border-radius: 12px; line-height: 1.6; font-size: 0.95rem; max-width: 75%; word-wrap: break-word; white-space: pre-wrap; }
             .user-message { background-color: #2f2f2f; color: #fff; border-top-right-radius: 2px; }
             .ai-message { background-color: transparent; color: #ececf1; border-top-left-radius: 2px; padding-left: 0; }
 
-            /* Input Box Area */
             .input-area { padding: 20px; background-color: #212121; display: flex; justify-content: center; }
             .input-box-wrapper { max-width: 800px; width: 100%; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
             textarea { width: 100%; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 150px; }
@@ -54,13 +51,11 @@ def chat_ui():
         </style>
     </head>
     <body>
-        <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">✨ OpenDev AI</div>
             <button class="new-chat-btn" onclick="location.reload()">+ New Chat</button>
         </div>
 
-        <!-- Main Workspace -->
         <div class="main-container">
             <div class="chat-header">Dummy AI Workspace</div>
             
@@ -88,7 +83,6 @@ def chat_ui():
                 const text = inputField.value.trim();
                 if (!text) return;
 
-                // User Message
                 const userRow = document.createElement('div');
                 userRow.className = 'message-row user';
                 userRow.innerHTML = `<div class="message user-message">${text}</div>`;
@@ -97,7 +91,6 @@ def chat_ui():
                 inputField.value = '';
                 chatContainer.scrollTop = chatContainer.scrollHeight;
 
-                // Loading message
                 const aiRow = document.createElement('div');
                 aiRow.className = 'message-row';
                 const aiMsg = document.createElement('div');
@@ -116,7 +109,11 @@ def chat_ui():
                     const data = await response.json();
                     
                     aiMsg.classList.remove('loading');
-                    aiMsg.innerText = data.response || "Sorry, no response received.";
+                    if (response.ok && data.response) {
+                        aiMsg.innerText = data.response;
+                    } else {
+                        aiMsg.innerText = data.detail || "Sorry, an error occurred.";
+                    }
                 } catch (error) {
                     aiMsg.classList.remove('loading');
                     aiMsg.innerText = "Error connecting to the server.";
@@ -138,13 +135,17 @@ def chat_ui():
 @app.post("/chat")
 def chat_with_ai(request: ChatRequest):
     try:
-        # সিস্টেম ইন্সট্রাকশন যুক্ত করা হলো যাতে মডেল সবসময় নিজেকে Dummy AI এবং OpenDev-এর তৈরি বলে পরিচয় দেয়
+        # জেমিনির জেনারেট কন্টেন্ট রিকোয়েস্ট আরও নিখুঁতভাবে হ্যান্ডেল করার জন্য
+        full_prompt = (
+            "System Instructions: Your name is Dummy AI. You were created by OpenDev. "
+            "Whenever someone asks about your name, identity, or who created you, you must state that your name is Dummy AI and you were created by OpenDev. "
+            "Respond in the same language the user uses (e.g., if Bengali, reply in Bengali; if English, reply in English).\n\n"
+            f"User: {request.prompt}"
+        )
+        
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=request.prompt,
-            config={
-                "system_instruction": "Your name is Dummy AI. You were created by OpenDev. Whenever someone asks about your name, identity, or who created you, you must state that your name is Dummy AI and you were created by OpenDev. Respond in the same language the user uses (e.g., if the user speaks in Bengali, reply in Bengali; if in English, reply in English)."
-            }
+            contents=full_prompt,
         )
         return {"response": response.text}
     except Exception as e:
