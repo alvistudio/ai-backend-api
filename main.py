@@ -212,20 +212,20 @@ def chat_with_ai(request: ChatRequest):
             res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
             return {"response": res.text}
             
-        # 2. OpenRouter
+        # 2. OpenRouter (Updated to a 100% free model)
         elif request.provider == "openrouter":
             if not openrouter_client: raise Exception("OPENROUTER_API_KEY is not set.")
             res = openrouter_client.chat.completions.create(
-                model="meta-llama/llama-3.1-8b-instruct:free",
+                model="huggingfaceh4/zephyr-7b-beta:free",
                 messages=messages
             )
             return {"response": res.choices[0].message.content}
             
-        # 3. Hugging Face
+        # 3. Hugging Face (Updated to a stable open model)
         elif request.provider == "huggingface":
             if not hf_client: raise Exception("HUGGINGFACE_API_KEY is not set.")
             res = hf_client.chat.completions.create(
-                model="mistralai/Mistral-7B-Instruct-v0.2", # Updated to a fully open model
+                model="HuggingFaceH4/zephyr-7b-beta", 
                 messages=messages,
                 max_tokens=500
             )
@@ -249,13 +249,13 @@ def chat_with_ai(request: ChatRequest):
             )
             return {"response": res.choices[0].message.content}
 
-        # 6. Cohere
+        # 6. Cohere (Updated to the base 'command' model)
         elif request.provider == "cohere":
             if not cohere_client: raise Exception("COHERE_API_KEY is not set.")
             res = cohere_client.chat(
                 message=request.prompt,
                 preamble=SYSTEM_INSTRUCTION,
-                model="command-r-plus" # Updated to their current active model
+                model="command"
             )
             return {"response": res.text}
 
