@@ -1,4 +1,7 @@
 import os
+import urllib.parse
+import requests
+import base64
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -12,35 +15,37 @@ app = FastAPI()
 # API Clients Initialization
 # ==========================================
 
+# 1. Gemini
 gemini_key = os.environ.get("GEMINI_API_KEY")
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 
+# 2. OpenRouter
 openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-openrouter_client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=openrouter_key,
-) if openrouter_key else None
+openrouter_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key) if openrouter_key else None
 
+# 3. Hugging Face (Text & Image)
 hf_key = os.environ.get("HUGGINGFACE_API_KEY")
-hf_client = OpenAI(
-    base_url="https://api-inference.huggingface.co/v1/",
-    api_key=hf_key,
-) if hf_key else None
+hf_client = OpenAI(base_url="https://api-inference.huggingface.co/v1/", api_key=hf_key) if hf_key else None
 
+# 4. SambaNova Cloud
 sambanova_key = os.environ.get("SAMBANOVA_API_KEY")
-sambanova_client = OpenAI(
-    base_url="https://api.sambanova.ai/v1",
-    api_key=sambanova_key,
-) if sambanova_key else None
+sambanova_client = OpenAI(base_url="https://api.sambanova.ai/v1", api_key=sambanova_key) if sambanova_key else None
 
+# 5. GitHub Models
 github_key = os.environ.get("GITHUB_TOKEN")
-github_client = OpenAI(
-    base_url="https://models.inference.ai.azure.com",
-    api_key=github_key,
-) if github_key else None
+github_client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_key) if github_key else None
 
+# 6. Cohere
 cohere_key = os.environ.get("COHERE_API_KEY")
 cohere_client = cohere.Client(cohere_key) if cohere_key else None
+
+# 7. DeepSeek (NEW)
+deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+deepseek_client = OpenAI(base_url="https://api.deepseek.com", api_key=deepseek_key) if deepseek_key else None
+
+# 8. Mistral (NEW)
+mistral_key = os.environ.get("MISTRAL_API_KEY")
+mistral_client = OpenAI(base_url="https://api.mistral.ai/v1", api_key=mistral_key) if mistral_key else None
 
 # ==========================================
 # Data Models & System Instructions
@@ -89,6 +94,7 @@ def chat_ui():
             .message { padding: 12px 18px; border-radius: 12px; line-height: 1.6; font-size: 0.95rem; max-width: 75%; word-wrap: break-word; white-space: pre-wrap; }
             .user-message { background-color: #2f2f2f; color: #fff; border-top-right-radius: 2px; }
             .ai-message { background-color: transparent; color: #ececf1; border-top-left-radius: 2px; padding-left: 0; }
+            .ai-message img { margin-top: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
 
             .input-area { padding: 20px; background-color: #212121; display: flex; justify-content: center; }
             .input-box-wrapper { max-width: 800px; width: 100%; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
@@ -110,18 +116,26 @@ def chat_ui():
             <div class="chat-header">
                 <span>Dummy AI Workspace</span>
                 <select id="provider-select" class="provider-selector">
-                    <option value="gemini">Gemini API</option>
-                    <option value="openrouter">OpenRouter API</option>
-                    <option value="huggingface">Hugging Face API</option>
-                    <option value="sambanova">SambaNova Cloud API</option>
-                    <option value="github">GitHub Models API</option>
-                    <option value="cohere">Cohere API</option>
+                    <optgroup label="Text Models">
+                        <option value="gemini">Gemini API</option>
+                        <option value="deepseek">DeepSeek API</option>
+                        <option value="mistral">Mistral API</option>
+                        <option value="openrouter">OpenRouter API</option>
+                        <option value="huggingface">Hugging Face Text API</option>
+                        <option value="sambanova">SambaNova Cloud API</option>
+                        <option value="github">GitHub Models API</option>
+                        <option value="cohere">Cohere API</option>
+                    </optgroup>
+                    <optgroup label="Image Models">
+                        <option value="pollinations_img">Pollinations AI (Image)</option>
+                        <option value="hf_img">Hugging Face (SDXL Image)</option>
+                    </optgroup>
                 </select>
             </div>
             
             <div id="chat-container">
                 <div class="message-row">
-                    <div class="message ai-message">Hello! I am Dummy AI, created by OpenDev. I am ready with multiple brains. How can I help you today?</div>
+                    <div class="message ai-message">Hello! I am Dummy AI, created by OpenDev. I am powered by multiple brains and image generators. How can I help you today?</div>
                 </div>
             </div>
 
@@ -160,7 +174,7 @@ def chat_ui():
                 aiRow.className = 'message-row';
                 const aiMsg = document.createElement('div');
                 aiMsg.className = 'message ai-message loading';
-                aiMsg.innerText = `Generating response via ${providerName}...`;
+                aiMsg.innerText = `Generating via ${providerName}...`;
                 aiRow.appendChild(aiMsg);
                 chatContainer.appendChild(aiRow);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -175,7 +189,8 @@ def chat_ui():
                     
                     aiMsg.classList.remove('loading');
                     if (response.ok && data.response) {
-                        aiMsg.innerText = data.response;
+                        // Using innerHTML to render HTML tags (like <img>) properly
+                        aiMsg.innerHTML = data.response;
                     } else {
                         aiMsg.innerText = data.detail || "API Error: Please check if the API key is valid.";
                     }
@@ -205,14 +220,30 @@ def chat_with_ai(request: ChatRequest):
     ]
     
     try:
-        # 1. Gemini
+        # ==================== TEXT MODELS ====================
+        
         if request.provider == "gemini":
             if not gemini_client: raise Exception("GEMINI_API_KEY is not set.")
             full_prompt = f"System Instructions: {SYSTEM_INSTRUCTION}\n\nUser: {request.prompt}"
             res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
             return {"response": res.text}
             
-        # 2. OpenRouter (আপনার দেওয়া স্ক্রিনশটের মডেল অনুযায়ী আপডেট করা হলো)
+        elif request.provider == "deepseek":
+            if not deepseek_client: raise Exception("DEEPSEEK_API_KEY is not set.")
+            res = deepseek_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages
+            )
+            return {"response": res.choices[0].message.content}
+            
+        elif request.provider == "mistral":
+            if not mistral_client: raise Exception("MISTRAL_API_KEY is not set.")
+            res = mistral_client.chat.completions.create(
+                model="mistral-tiny",
+                messages=messages
+            )
+            return {"response": res.choices[0].message.content}
+            
         elif request.provider == "openrouter":
             if not openrouter_client: raise Exception("OPENROUTER_API_KEY is not set.")
             res = openrouter_client.chat.completions.create(
@@ -221,7 +252,6 @@ def chat_with_ai(request: ChatRequest):
             )
             return {"response": res.choices[0].message.content}
             
-        # 3. Hugging Face
         elif request.provider == "huggingface":
             if not hf_client: raise Exception("HUGGINGFACE_API_KEY is not set.")
             res = hf_client.chat.completions.create(
@@ -231,7 +261,6 @@ def chat_with_ai(request: ChatRequest):
             )
             return {"response": res.choices[0].message.content}
 
-        # 4. SambaNova Cloud
         elif request.provider == "sambanova":
             if not sambanova_client: raise Exception("SAMBANOVA_API_KEY is not set.")
             res = sambanova_client.chat.completions.create(
@@ -240,7 +269,6 @@ def chat_with_ai(request: ChatRequest):
             )
             return {"response": res.choices[0].message.content}
 
-        # 5. GitHub Models
         elif request.provider == "github":
             if not github_client: raise Exception("GITHUB_TOKEN is not set.")
             res = github_client.chat.completions.create(
@@ -249,7 +277,6 @@ def chat_with_ai(request: ChatRequest):
             )
             return {"response": res.choices[0].message.content}
 
-        # 6. Cohere
         elif request.provider == "cohere":
             if not cohere_client: raise Exception("COHERE_API_KEY is not set.")
             res = cohere_client.chat(
@@ -258,6 +285,32 @@ def chat_with_ai(request: ChatRequest):
                 model="command-r-08-2024"
             )
             return {"response": res.text}
+
+        # ==================== IMAGE MODELS ====================
+
+        elif request.provider == "pollinations_img":
+            # Prompt Enhancer & Watermark removal setup
+            enhanced_prompt = f"{request.prompt}, highly detailed, 4k resolution, masterpiece, professional lighting, centered, perfect composition"
+            encoded_prompt = urllib.parse.quote(enhanced_prompt)
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?nologo=true"
+            
+            html_response = f'<p>Here is your generated image:</p><img src="{image_url}" alt="Generated Image" style="max-width: 100%; border-radius: 8px;" />'
+            return {"response": html_response}
+
+        elif request.provider == "hf_img":
+            if not hf_key: raise Exception("HUGGINGFACE_API_KEY is not set.")
+            # Stable Diffusion XL endpoint
+            api_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+            headers = {"Authorization": f"Bearer {hf_key}"}
+            
+            res = requests.post(api_url, headers=headers, json={"inputs": request.prompt})
+            if res.status_code != 200:
+                raise Exception("Hugging Face Image API is currently overloaded. Please try Pollinations AI.")
+                
+            # Convert image bytes to Base64 to display directly in chat
+            img_b64 = base64.b64encode(res.content).decode("utf-8")
+            html_response = f'<p>Here is your generated image:</p><img src="data:image/jpeg;base64,{img_b64}" alt="Generated Image" style="max-width: 100%; border-radius: 8px;" />'
+            return {"response": html_response}
 
         else:
             raise Exception("Invalid AI Provider Selected!")
