@@ -2,6 +2,7 @@ import os
 import urllib.parse
 import requests
 import base64
+import random
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -15,35 +16,27 @@ app = FastAPI()
 # API Clients Initialization
 # ==========================================
 
-# 1. Gemini
 gemini_key = os.environ.get("GEMINI_API_KEY")
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 
-# 2. OpenRouter
 openrouter_key = os.environ.get("OPENROUTER_API_KEY")
 openrouter_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key) if openrouter_key else None
 
-# 3. Hugging Face (Text & Image)
 hf_key = os.environ.get("HUGGINGFACE_API_KEY")
 hf_client = OpenAI(base_url="https://api-inference.huggingface.co/v1/", api_key=hf_key) if hf_key else None
 
-# 4. SambaNova Cloud
 sambanova_key = os.environ.get("SAMBANOVA_API_KEY")
 sambanova_client = OpenAI(base_url="https://api.sambanova.ai/v1", api_key=sambanova_key) if sambanova_key else None
 
-# 5. GitHub Models
 github_key = os.environ.get("GITHUB_TOKEN")
 github_client = OpenAI(base_url="https://models.inference.ai.azure.com", api_key=github_key) if github_key else None
 
-# 6. Cohere
 cohere_key = os.environ.get("COHERE_API_KEY")
 cohere_client = cohere.Client(cohere_key) if cohere_key else None
 
-# 7. DeepSeek (NEW)
 deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
 deepseek_client = OpenAI(base_url="https://api.deepseek.com", api_key=deepseek_key) if deepseek_key else None
 
-# 8. Mistral (NEW)
 mistral_key = os.environ.get("MISTRAL_API_KEY")
 mistral_client = OpenAI(base_url="https://api.mistral.ai/v1", api_key=mistral_key) if mistral_key else None
 
@@ -94,7 +87,12 @@ def chat_ui():
             .message { padding: 12px 18px; border-radius: 12px; line-height: 1.6; font-size: 0.95rem; max-width: 75%; word-wrap: break-word; white-space: pre-wrap; }
             .user-message { background-color: #2f2f2f; color: #fff; border-top-right-radius: 2px; }
             .ai-message { background-color: transparent; color: #ececf1; border-top-left-radius: 2px; padding-left: 0; }
-            .ai-message img { margin-top: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+            
+            /* Image Watermark Crop & Button Styling */
+            .image-wrapper { position: relative; display: inline-block; margin-top: 10px; border-radius: 8px; }
+            .gen-image { max-width: 100%; display: block; border-radius: 8px; clip-path: inset(0px 0px 45px 0px); margin-bottom: -45px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+            .download-btn { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.2); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(4px); }
+            .download-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.5); }
 
             .input-area { padding: 20px; background-color: #212121; display: flex; justify-content: center; }
             .input-box-wrapper { max-width: 800px; width: 100%; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
@@ -118,13 +116,13 @@ def chat_ui():
                 <select id="provider-select" class="provider-selector">
                     <optgroup label="Text Models">
                         <option value="gemini">Gemini API</option>
+                        <option value="cohere">Cohere API</option>
+                        <option value="openrouter">OpenRouter API</option>
                         <option value="deepseek">DeepSeek API</option>
                         <option value="mistral">Mistral API</option>
-                        <option value="openrouter">OpenRouter API</option>
                         <option value="huggingface">Hugging Face Text API</option>
                         <option value="sambanova">SambaNova Cloud API</option>
                         <option value="github">GitHub Models API</option>
-                        <option value="cohere">Cohere API</option>
                     </optgroup>
                     <optgroup label="Image Models">
                         <option value="pollinations_img">Pollinations AI (Image)</option>
@@ -135,7 +133,7 @@ def chat_ui():
             
             <div id="chat-container">
                 <div class="message-row">
-                    <div class="message ai-message">Hello! I am Dummy AI, created by OpenDev. I am powered by multiple brains and image generators. How can I help you today?</div>
+                    <div class="message ai-message">Hello! I am Dummy AI. My image generator is now upgraded with a Download Button and watermark removal. Try it out!</div>
                 </div>
             </div>
 
@@ -151,6 +149,25 @@ def chat_ui():
         </div>
 
         <script>
+            // Image Download Function
+            async function downloadImage(url, filename) {
+                try {
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = blobUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(blobUrl);
+                    document.body.removeChild(a);
+                } catch (e) {
+                    alert('Download failed. You can right-click the image and select "Save image as..."');
+                }
+            }
+
             async function sendMessage() {
                 const inputField = document.getElementById('user-input');
                 const chatContainer = document.getElementById('chat-container');
@@ -189,7 +206,6 @@ def chat_ui():
                     
                     aiMsg.classList.remove('loading');
                     if (response.ok && data.response) {
-                        // Using innerHTML to render HTML tags (like <img>) properly
                         aiMsg.innerHTML = data.response;
                     } else {
                         aiMsg.innerText = data.detail || "API Error: Please check if the API key is valid.";
@@ -230,76 +246,64 @@ def chat_with_ai(request: ChatRequest):
             
         elif request.provider == "deepseek":
             if not deepseek_client: raise Exception("DEEPSEEK_API_KEY is not set.")
-            res = deepseek_client.chat.completions.create(
-                model="deepseek-chat",
-                messages=messages
-            )
+            res = deepseek_client.chat.completions.create(model="deepseek-chat", messages=messages)
             return {"response": res.choices[0].message.content}
             
         elif request.provider == "mistral":
             if not mistral_client: raise Exception("MISTRAL_API_KEY is not set.")
-            res = mistral_client.chat.completions.create(
-                model="mistral-tiny",
-                messages=messages
-            )
+            res = mistral_client.chat.completions.create(model="mistral-tiny", messages=messages)
             return {"response": res.choices[0].message.content}
             
         elif request.provider == "openrouter":
             if not openrouter_client: raise Exception("OPENROUTER_API_KEY is not set.")
-            res = openrouter_client.chat.completions.create(
-                model="liquid/lfm-3-1.7b:free", 
-                messages=messages
-            )
+            res = openrouter_client.chat.completions.create(model="liquid/lfm-3-1.7b:free", messages=messages)
             return {"response": res.choices[0].message.content}
             
         elif request.provider == "huggingface":
             if not hf_client: raise Exception("HUGGINGFACE_API_KEY is not set.")
-            res = hf_client.chat.completions.create(
-                model="microsoft/Phi-3-mini-4k-instruct",
-                messages=messages,
-                max_tokens=500
-            )
+            res = hf_client.chat.completions.create(model="microsoft/Phi-3-mini-4k-instruct", messages=messages, max_tokens=500)
             return {"response": res.choices[0].message.content}
 
         elif request.provider == "sambanova":
             if not sambanova_client: raise Exception("SAMBANOVA_API_KEY is not set.")
-            res = sambanova_client.chat.completions.create(
-                model="Meta-Llama-3.1-8B-Instruct",
-                messages=messages
-            )
+            res = sambanova_client.chat.completions.create(model="Meta-Llama-3.1-8B-Instruct", messages=messages)
             return {"response": res.choices[0].message.content}
 
         elif request.provider == "github":
             if not github_client: raise Exception("GITHUB_TOKEN is not set.")
-            res = github_client.chat.completions.create(
-                model="meta-llama-3-8b-instruct",
-                messages=messages
-            )
+            res = github_client.chat.completions.create(model="meta-llama-3-8b-instruct", messages=messages)
             return {"response": res.choices[0].message.content}
 
         elif request.provider == "cohere":
             if not cohere_client: raise Exception("COHERE_API_KEY is not set.")
-            res = cohere_client.chat(
-                message=request.prompt,
-                preamble=SYSTEM_INSTRUCTION,
-                model="command-r-08-2024"
-            )
+            res = cohere_client.chat(message=request.prompt, preamble=SYSTEM_INSTRUCTION, model="command-r-08-2024")
             return {"response": res.text}
 
         # ==================== IMAGE MODELS ====================
 
         elif request.provider == "pollinations_img":
-            # Prompt Enhancer & Watermark removal setup
-            enhanced_prompt = f"{request.prompt}, highly detailed, 4k resolution, masterpiece, professional lighting, centered, perfect composition"
+            enhanced_prompt = f"{request.prompt}, highly detailed, 4k resolution, masterpiece, professional lighting, centered"
             encoded_prompt = urllib.parse.quote(enhanced_prompt)
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?nologo=true"
+            seed = random.randint(1, 100000)
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?seed={seed}&nologo=true"
             
-            html_response = f'<p>Here is your generated image:</p><img src="{image_url}" alt="Generated Image" style="max-width: 100%; border-radius: 8px;" />'
+            # Download Button HTML Structure
+            html_response = f"""
+            <div style="margin-bottom: 10px;">Here is your image:</div>
+            <div class='image-wrapper'>
+                <img src='{image_url}' class='gen-image' crossorigin='anonymous' />
+                <button class='download-btn' onclick='downloadImage("{image_url}", "DummyAI_Image.jpg")'>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                        <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                    </svg> Download
+                </button>
+            </div>
+            """
             return {"response": html_response}
 
         elif request.provider == "hf_img":
             if not hf_key: raise Exception("HUGGINGFACE_API_KEY is not set.")
-            # Stable Diffusion XL endpoint
             api_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
             headers = {"Authorization": f"Bearer {hf_key}"}
             
@@ -307,9 +311,21 @@ def chat_with_ai(request: ChatRequest):
             if res.status_code != 200:
                 raise Exception("Hugging Face Image API is currently overloaded. Please try Pollinations AI.")
                 
-            # Convert image bytes to Base64 to display directly in chat
             img_b64 = base64.b64encode(res.content).decode("utf-8")
-            html_response = f'<p>Here is your generated image:</p><img src="data:image/jpeg;base64,{img_b64}" alt="Generated Image" style="max-width: 100%; border-radius: 8px;" />'
+            b64_url = f"data:image/jpeg;base64,{img_b64}"
+            
+            html_response = f"""
+            <div style="margin-bottom: 10px;">Here is your image:</div>
+            <div class='image-wrapper'>
+                <img src='{b64_url}' class='gen-image' />
+                <button class='download-btn' onclick='downloadImage("{b64_url}", "DummyAI_Image.jpg")'>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                        <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                    </svg> Download
+                </button>
+            </div>
+            """
             return {"response": html_response}
 
         else:
