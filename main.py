@@ -30,6 +30,11 @@ cohere_client = cohere.Client(cohere_key) if cohere_key else None
 mistral_key = os.environ.get("MISTRAL_API_KEY")
 mistral_client = OpenAI(base_url="https://api.mistral.ai/v1", api_key=mistral_key) if mistral_key else None
 
+groq_key = os.environ.get("GROQ_API_KEY")
+groq_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key) if groq_key else None
+
+together_key = os.environ.get("TOGETHER_API_KEY")
+
 # ==========================================
 # Data Models & System Instructions
 # ==========================================
@@ -37,6 +42,7 @@ mistral_client = OpenAI(base_url="https://api.mistral.ai/v1", api_key=mistral_ke
 class ChatRequest(BaseModel):
     prompt: str
     provider: str = "gemini"
+    image_data: str = None  # Base64 string for image uploads
 
 SYSTEM_INSTRUCTION = (
     "Your name is Dummy AI. You were created by OpenDev. "
@@ -78,7 +84,8 @@ def chat_ui():
             .message-row.user { justify-content: flex-end; }
             
             .message { line-height: 1.6; font-size: 1rem; word-wrap: break-word; white-space: pre-wrap; max-width: 85%; }
-            .user-message { background-color: #2f2f2f; padding: 12px 20px; border-radius: 24px; border-bottom-right-radius: 4px; color: #fff; }
+            .user-message { background-color: #2f2f2f; padding: 12px 20px; border-radius: 24px; border-bottom-right-radius: 4px; color: #fff; display: flex; flex-direction: column; gap: 10px; }
+            .user-uploaded-img { max-width: 250px; border-radius: 8px; }
             .ai-message { background-color: transparent; color: var(--text-main); width: 100%; display: flex; flex-direction: column; }
             .ai-content { margin-bottom: 5px; }
 
@@ -98,9 +105,20 @@ def chat_ui():
 
             .input-area { padding: 20px; padding-bottom: 30px; }
             .input-box-wrapper { max-width: 800px; width: 100%; margin: 0 auto; background-color: var(--bg-input); border: 1px solid #424242; border-radius: 24px; padding: 12px 16px; display: flex; flex-direction: column; position: relative; }
-            textarea { width: 100%; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 200px; line-height: 1.5; padding-right: 50px; }
             
-            .send-btn { position: absolute; right: 12px; bottom: 12px; background-color: var(--text-main); color: var(--bg-chat); border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+            #image-preview-container { display: none; margin-bottom: 10px; position: relative; width: fit-content; }
+            #image-preview { max-height: 100px; border-radius: 8px; }
+            .remove-img-btn { position: absolute; top: -8px; right: -8px; background: #ff4a4a; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+            
+            .input-controls { display: flex; gap: 10px; align-items: flex-end; }
+            .util-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 50%; transition: 0.2s; }
+            .util-btn:hover { background: #383838; color: #fff; }
+            .util-btn.recording { color: #ff4a4a; animation: pulse 1.5s infinite; }
+            @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+            
+            textarea { flex: 1; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 200px; line-height: 1.5; padding: 8px 0; }
+            
+            .send-btn { background-color: var(--text-main); color: var(--bg-chat); border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
             .send-btn:hover { opacity: 0.8; }
             .send-btn svg { width: 16px; height: 16px; fill: currentColor; }
             
@@ -131,18 +149,19 @@ def chat_ui():
                 <span>Dummy AI</span>
                 <select id="provider-select" class="provider-selector">
                     <optgroup label="Fast Text Models">
-                        <option value="gemini">Gemini API</option>
-                        <option value="cohere">Cohere API</option>
+                        <option value="gemini">Gemini API (Vision + Text)</option>
+                        <option value="groq">Groq API (Ultra Fast)</option>
                         <option value="mistral">Mistral API</option>
+                        <option value="cohere">Cohere API</option>
                     </optgroup>
-                    <optgroup label="OpenRouter (Free Models)">
-                        <option value="or_liquid">Liquid LFM (Free)</option>
-                        <option value="or_llama3">Meta Llama 3 (Free)</option>
-                        <option value="or_qwen">Qwen 2 7B (Free)</option>
-                        <option value="or_phi3">Microsoft Phi-3 (Free)</option>
+                    <optgroup label="OpenRouter (Live Free Models)">
+                        <option value="or_llama3">Meta Llama 3.1 8B</option>
+                        <option value="or_gemma">Google Gemma 2 9B</option>
+                        <option value="or_liquid">Liquid LFM 1.7B</option>
                     </optgroup>
                     <optgroup label="High-Res Image Models">
-                        <option value="pollinations_img">Dummy HD Image Gen</option>
+                        <option value="together_img">Together AI (FLUX 4K)</option>
+                        <option value="pollinations_img">Dummy Backup Gen</option>
                     </optgroup>
                 </select>
             </div>
@@ -151,7 +170,7 @@ def chat_ui():
                 <div class="chat-wrapper" id="chat-wrapper">
                     <div class="message-row">
                         <div class="message ai-message">
-                            <div class="ai-content">Hello! I am Dummy AI. Image generation is now upgraded to HD/4K quality. Try generating an image!</div>
+                            <div class="ai-content">Hello! I am Dummy AI. Voice input, image attachments, and 4K FLUX image generation are now active!</div>
                         </div>
                     </div>
                 </div>
@@ -159,20 +178,110 @@ def chat_ui():
 
             <div class="input-area">
                 <div class="input-box-wrapper">
-                    <textarea id="user-input" rows="1" placeholder="Message Dummy AI..." oninput="autoResize(this)" onkeypress="handleKeyPress(event)"></textarea>
-                    <button class="send-btn" onclick="sendMessage()">
-                        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                    </button>
+                    <div id="image-preview-container">
+                        <img id="image-preview" src="" alt="Preview">
+                        <button class="remove-img-btn" onclick="removeImage()">×</button>
+                    </div>
+                    
+                    <div class="input-controls">
+                        <input type="file" id="file-upload" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                        <button class="util-btn" onclick="document.getElementById('file-upload').click()" title="Attach Image">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                        </button>
+                        
+                        <button class="util-btn" id="mic-btn" onclick="toggleSpeechRecognition()" title="Voice Input">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                        </button>
+
+                        <textarea id="user-input" rows="1" placeholder="Message Dummy AI..." oninput="autoResize(this)" onkeypress="handleKeyPress(event)"></textarea>
+                        
+                        <button class="send-btn" onclick="sendMessage()">
+                            <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
 
         <script>
             let lastUserPrompt = "";
+            let uploadedImageBase64 = null;
+            let recognition = null;
+            let isRecording = false;
+
+            // Initialize Speech Recognition
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = true;
+                recognition.lang = 'bn-BD'; // Default to Bengali, auto-adapts
+
+                recognition.onresult = function(event) {
+                    let transcript = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        transcript += event.results[i][0].transcript;
+                    }
+                    const inputField = document.getElementById('user-input');
+                    inputField.value = transcript;
+                    autoResize(inputField);
+                };
+
+                recognition.onerror = function(event) {
+                    stopRecordingUI();
+                };
+
+                recognition.onend = function() {
+                    stopRecordingUI();
+                };
+            }
+
+            function toggleSpeechRecognition() {
+                if (!recognition) {
+                    alert("Your browser does not support Voice Input.");
+                    return;
+                }
+                if (isRecording) {
+                    recognition.stop();
+                    stopRecordingUI();
+                } else {
+                    recognition.start();
+                    document.getElementById('mic-btn').classList.add('recording');
+                    isRecording = true;
+                }
+            }
+
+            function stopRecordingUI() {
+                document.getElementById('mic-btn').classList.remove('recording');
+                isRecording = false;
+            }
 
             function autoResize(textarea) {
                 textarea.style.height = 'auto';
                 textarea.style.height = textarea.scrollHeight + 'px';
+            }
+
+            function handleImageUpload(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const base64String = e.target.result;
+                        uploadedImageBase64 = base64String.split(',')[1]; // Store pure base64
+                        document.getElementById('image-preview').src = base64String;
+                        document.getElementById('image-preview-container').style.display = 'block';
+                        
+                        // Force provider to Gemini if image is uploaded
+                        document.getElementById('provider-select').value = 'gemini';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            function removeImage() {
+                uploadedImageBase64 = null;
+                document.getElementById('image-preview-container').style.display = 'none';
+                document.getElementById('file-upload').value = '';
             }
 
             function downloadImage(dataUrl, filename) {
@@ -208,14 +317,10 @@ def chat_ui():
 
                 if (type === 'like') {
                     btn.classList.toggle('active');
-                    if (btn.classList.contains('active')) {
-                        dislikeBtn.classList.remove('active');
-                    }
+                    if (btn.classList.contains('active')) dislikeBtn.classList.remove('active');
                 } else if (type === 'dislike') {
                     btn.classList.toggle('active');
-                    if (btn.classList.contains('active')) {
-                        likeBtn.classList.remove('active');
-                    }
+                    if (btn.classList.contains('active')) likeBtn.classList.remove('active');
                 }
             }
 
@@ -247,16 +352,29 @@ def chat_ui():
                 const provider = providerSelect.value;
                 const providerName = providerSelect.options[providerSelect.selectedIndex].text;
 
-                if (!text) return;
+                if (!text && !uploadedImageBase64) return;
+                
                 if (!isRegenerate) lastUserPrompt = text;
 
+                // Render User Message
                 const userRow = document.createElement('div');
                 userRow.className = 'message-row user';
-                userRow.innerHTML = `<div class="message user-message">${text}</div>`;
+                let userHTML = `<div class="message user-message">`;
+                if (uploadedImageBase64) {
+                    userHTML += `<img src="data:image/jpeg;base64,${uploadedImageBase64}" class="user-uploaded-img">`;
+                }
+                if (text) userHTML += `<div>${text}</div>`;
+                userHTML += `</div>`;
+                userRow.innerHTML = userHTML;
                 chatWrapper.appendChild(userRow);
 
+                // Prepare Payload
+                const payload = { prompt: text || "Describe this image", provider: provider, image_data: uploadedImageBase64 };
+
+                // Clean UI
                 inputField.value = '';
                 inputField.style.height = 'auto';
+                removeImage();
                 chatContainer.scrollTop = chatContainer.scrollHeight;
 
                 const aiRow = document.createElement('div');
@@ -272,7 +390,7 @@ def chat_ui():
                     const response = await fetch('/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt: text, provider: provider })
+                        body: JSON.stringify(payload)
                     });
                     const data = await response.json();
                     
@@ -306,13 +424,28 @@ def chat_with_ai(request: ChatRequest):
     ]
     
     try:
-        # ==================== TEXT MODELS ====================
+        # ==================== TEXT & VISION MODELS ====================
         if request.provider == "gemini":
             if not gemini_client: raise Exception("GEMINI_API_KEY is missing.")
-            full_prompt = f"System Instructions: {SYSTEM_INSTRUCTION}\n\nUser: {request.prompt}"
-            res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
+            
+            # Handling Vision (Image Upload)
+            if request.image_data:
+                image_bytes = base64.b64decode(request.image_data)
+                img = PILImage.open(io.BytesIO(image_bytes))
+                res = gemini_client.models.generate_content(
+                    model="gemini-2.5-flash", 
+                    contents=[SYSTEM_INSTRUCTION, img, request.prompt]
+                )
+            else:
+                full_prompt = f"System Instructions: {SYSTEM_INSTRUCTION}\n\nUser: {request.prompt}"
+                res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
             return {"response": res.text}
             
+        elif request.provider == "groq":
+            if not groq_client: raise Exception("GROQ_API_KEY is missing.")
+            res = groq_client.chat.completions.create(model="llama3-8b-8192", messages=messages)
+            return {"response": res.choices[0].message.content}
+
         elif request.provider == "mistral":
             if not mistral_client: raise Exception("MISTRAL_API_KEY is missing.")
             res = mistral_client.chat.completions.create(model="mistral-tiny", messages=messages)
@@ -327,25 +460,52 @@ def chat_with_ai(request: ChatRequest):
         elif request.provider.startswith("or_"):
             if not openrouter_client: raise Exception("OPENROUTER_API_KEY is missing.")
             
-            # Map the provider slug to the actual OpenRouter model ID
             model_map = {
-                "or_liquid": "liquid/lfm-3-1.7b:free",
-                "or_llama3": "meta-llama/llama-3-8b-instruct:free",
-                "or_qwen": "qwen/qwen-2-7b-instruct:free",
-                "or_phi3": "microsoft/phi-3-mini-128k-instruct:free"
+                "or_llama3": "meta-llama/llama-3.1-8b-instruct:free",
+                "or_gemma": "google/gemma-2-9b-it:free",
+                "or_liquid": "liquid/lfm-3-1.7b:free"
             }
             
             target_model = model_map.get(request.provider)
             res = openrouter_client.chat.completions.create(model=target_model, messages=messages)
             return {"response": res.choices[0].message.content}
 
-        # ==================== HIGH-RES IMAGE MODEL ====================
+        # ==================== HIGH-RES IMAGE MODELS ====================
+        elif request.provider == "together_img":
+            if not together_key: raise Exception("TOGETHER_API_KEY is missing.")
+            
+            url = "https://api.together.xyz/v1/images/generations"
+            headers = {"Authorization": f"Bearer {together_key}"}
+            payload = {
+                "model": "black-forest-labs/FLUX.1-schnell-Free",
+                "prompt": request.prompt,
+                "width": 1024,
+                "height": 1024,
+                "steps": 4,
+                "response_format": "base64"
+            }
+            
+            response = requests.post(url, json=payload, headers=headers)
+            if response.status_code == 200:
+                b64_data = response.json()["data"][0]["b64_json"]
+                b64_url = f"data:image/jpeg;base64,{b64_data}"
+                
+                return {"response": f"""
+                <div class='image-wrapper'>
+                    <img src='{b64_url}' class='gen-image' />
+                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "DummyAI_FLUX.jpg")' title="Download Image">
+                        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    </button>
+                </div>
+                """}
+            else:
+                raise Exception(f"Together AI Error: {response.text}")
+
         elif request.provider == "pollinations_img":
             enhanced_prompt = f"{request.prompt}, masterpiece, 4k resolution, high quality, highly detailed, sharp focus"
             encoded_prompt = urllib.parse.quote(enhanced_prompt)
             seed = random.randint(1, 100000)
             
-            # Added width=1024 and height=1024 for High Resolution
             image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?seed={seed}&width=1024&height=1024&nologo=true"
             
             img_response = requests.get(image_url)
@@ -362,13 +522,13 @@ def chat_with_ai(request: ChatRequest):
                 return {"response": f"""
                 <div class='image-wrapper'>
                     <img src='{b64_url}' class='gen-image' />
-                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "DummyAI_Image.jpg")' title="Download Image">
+                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "DummyAI_Backup.jpg")' title="Download Image">
                         <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
                     </button>
                 </div>
                 """}
             else:
-                raise Exception("Image generation failed. Try a different prompt.")
+                raise Exception("Image generation failed.")
 
         else:
             raise Exception("Invalid Provider.")
