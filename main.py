@@ -9,42 +9,36 @@ import cohere
 app = FastAPI()
 
 # ==========================================
-# API Clients Initialization (Safe Setup)
+# API Clients Initialization
 # ==========================================
 
-# 1. Gemini
 gemini_key = os.environ.get("GEMINI_API_KEY")
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 
-# 2. OpenRouter
 openrouter_key = os.environ.get("OPENROUTER_API_KEY")
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=openrouter_key,
 ) if openrouter_key else None
 
-# 3. Hugging Face (OpenAI Compatible)
 hf_key = os.environ.get("HUGGINGFACE_API_KEY")
 hf_client = OpenAI(
     base_url="https://api-inference.huggingface.co/v1/",
     api_key=hf_key,
 ) if hf_key else None
 
-# 4. SambaNova Cloud (OpenAI Compatible)
 sambanova_key = os.environ.get("SAMBANOVA_API_KEY")
 sambanova_client = OpenAI(
     base_url="https://api.sambanova.ai/v1",
     api_key=sambanova_key,
 ) if sambanova_key else None
 
-# 5. GitHub Models (OpenAI Compatible)
 github_key = os.environ.get("GITHUB_TOKEN")
 github_client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
     api_key=github_key,
 ) if github_key else None
 
-# 6. Cohere
 cohere_key = os.environ.get("COHERE_API_KEY")
 cohere_client = cohere.Client(cohere_key) if cohere_key else None
 
@@ -59,7 +53,7 @@ class ChatRequest(BaseModel):
 SYSTEM_INSTRUCTION = (
     "Your name is Dummy AI. You were created by OpenDev. "
     "Whenever someone asks about your name, identity, or who created you, you must state that your name is Dummy AI and you were created by OpenDev. "
-    "Respond in the same language the user uses (e.g., if Bengali, reply in Bengali; if English, reply in English)."
+    "Respond in the same language the user uses."
 )
 
 # ==========================================
@@ -183,11 +177,11 @@ def chat_ui():
                     if (response.ok && data.response) {
                         aiMsg.innerText = data.response;
                     } else {
-                        aiMsg.innerText = data.detail || "API Key for this provider might be missing or invalid.";
+                        aiMsg.innerText = data.detail || "API Error: Please check if the API key is valid.";
                     }
                 } catch (error) {
                     aiMsg.classList.remove('loading');
-                    aiMsg.innerText = "Error connecting to the server.";
+                    aiMsg.innerText = "Error connecting to the server. Check your network or server status.";
                 }
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
@@ -213,7 +207,7 @@ def chat_with_ai(request: ChatRequest):
     try:
         # 1. Gemini
         if request.provider == "gemini":
-            if not gemini_client: raise Exception("Gemini API key is not set in Environment Variables.")
+            if not gemini_client: raise Exception("GEMINI_API_KEY is not set.")
             full_prompt = f"System Instructions: {SYSTEM_INSTRUCTION}\n\nUser: {request.prompt}"
             res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
             return {"response": res.text}
@@ -231,7 +225,7 @@ def chat_with_ai(request: ChatRequest):
         elif request.provider == "huggingface":
             if not hf_client: raise Exception("HUGGINGFACE_API_KEY is not set.")
             res = hf_client.chat.completions.create(
-                model="meta-llama/Meta-Llama-3-8B-Instruct",
+                model="mistralai/Mistral-7B-Instruct-v0.2", # Updated to a fully open model
                 messages=messages,
                 max_tokens=500
             )
@@ -261,7 +255,7 @@ def chat_with_ai(request: ChatRequest):
             res = cohere_client.chat(
                 message=request.prompt,
                 preamble=SYSTEM_INSTRUCTION,
-                model="command-r"
+                model="command-r-plus" # Updated to their current active model
             )
             return {"response": res.text}
 
