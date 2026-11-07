@@ -212,20 +212,20 @@ def chat_with_ai(request: ChatRequest):
             res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
             return {"response": res.text}
             
-        # 2. OpenRouter (Updated to a 100% free model)
+        # 2. OpenRouter (আপনার দেওয়া স্ক্রিনশটের মডেল অনুযায়ী আপডেট করা হলো)
         elif request.provider == "openrouter":
             if not openrouter_client: raise Exception("OPENROUTER_API_KEY is not set.")
             res = openrouter_client.chat.completions.create(
-                model="huggingfaceh4/zephyr-7b-beta:free",
+                model="liquid/lfm-3-1.7b:free", 
                 messages=messages
             )
             return {"response": res.choices[0].message.content}
             
-        # 3. Hugging Face (Updated to a stable open model)
+        # 3. Hugging Face
         elif request.provider == "huggingface":
             if not hf_client: raise Exception("HUGGINGFACE_API_KEY is not set.")
             res = hf_client.chat.completions.create(
-                model="HuggingFaceH4/zephyr-7b-beta", 
+                model="microsoft/Phi-3-mini-4k-instruct",
                 messages=messages,
                 max_tokens=500
             )
@@ -249,13 +249,13 @@ def chat_with_ai(request: ChatRequest):
             )
             return {"response": res.choices[0].message.content}
 
-        # 6. Cohere (Updated to the base 'command' model)
+        # 6. Cohere
         elif request.provider == "cohere":
             if not cohere_client: raise Exception("COHERE_API_KEY is not set.")
             res = cohere_client.chat(
                 message=request.prompt,
                 preamble=SYSTEM_INSTRUCTION,
-                model="command"
+                model="command-r-08-2024"
             )
             return {"response": res.text}
 
