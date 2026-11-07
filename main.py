@@ -15,7 +15,7 @@ import cohere
 app = FastAPI()
 
 # ==========================================
-# API Clients Initialization (Only Reliable & Free APIs)
+# API Clients Initialization
 # ==========================================
 
 gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -62,13 +62,11 @@ def chat_ui():
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
             body { background-color: var(--bg-main); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
             
-            /* Sidebar */
             .sidebar { width: 260px; background-color: var(--bg-sidebar); display: flex; flex-direction: column; padding: 15px; transition: all 0.3s ease; z-index: 100; }
             .sidebar-header { font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
             .new-chat-btn { background-color: transparent; color: #fff; border: 1px solid #424242; padding: 10px; border-radius: 8px; text-align: left; cursor: pointer; font-size: 0.9rem; transition: 0.2s; display: flex; align-items: center; gap: 8px; }
             .new-chat-btn:hover { background-color: #2f2f2f; }
 
-            /* Main Chat Area */
             .main-container { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-chat); position: relative; }
             .chat-header { padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-chat); z-index: 10; font-weight: 600; font-size: 1.1rem; }
             .provider-selector { background-color: var(--bg-input); color: #fff; border: 1px solid #424242; padding: 8px 12px; border-radius: 8px; outline: none; cursor: pointer; font-size: 0.9rem; }
@@ -84,7 +82,6 @@ def chat_ui():
             .ai-message { background-color: transparent; color: var(--text-main); width: 100%; display: flex; flex-direction: column; }
             .ai-content { margin-bottom: 5px; }
 
-            /* Action Buttons (Copy, Regenerate, Like, Dislike) */
             .message-actions { display: flex; gap: 4px; align-items: center; margin-top: 8px; opacity: 0; transition: opacity 0.2s; }
             .message-row:hover .message-actions { opacity: 1; }
             .action-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
@@ -92,7 +89,6 @@ def chat_ui():
             .action-btn.active { color: var(--accent); }
             .action-btn svg { width: 16px; height: 16px; fill: currentColor; }
 
-            /* Modern Download Button & Image */
             .image-wrapper { position: relative; display: inline-block; margin-top: 10px; }
             .gen-image { max-width: 100%; display: block; border-radius: 12px; }
             .icon-download-btn { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(4px); transition: 0.2s; opacity: 0; }
@@ -100,7 +96,6 @@ def chat_ui():
             .icon-download-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.05); }
             .icon-download-btn svg { width: 18px; height: 18px; fill: currentColor; }
 
-            /* Input Area */
             .input-area { padding: 20px; padding-bottom: 30px; }
             .input-box-wrapper { max-width: 800px; width: 100%; margin: 0 auto; background-color: var(--bg-input); border: 1px solid #424242; border-radius: 24px; padding: 12px 16px; display: flex; flex-direction: column; position: relative; }
             textarea { width: 100%; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 200px; line-height: 1.5; padding-right: 50px; }
@@ -138,11 +133,16 @@ def chat_ui():
                     <optgroup label="Fast Text Models">
                         <option value="gemini">Gemini API</option>
                         <option value="cohere">Cohere API</option>
-                        <option value="openrouter">OpenRouter API</option>
                         <option value="mistral">Mistral API</option>
                     </optgroup>
+                    <optgroup label="OpenRouter (Free Models)">
+                        <option value="or_liquid">Liquid LFM (Free)</option>
+                        <option value="or_llama3">Meta Llama 3 (Free)</option>
+                        <option value="or_qwen">Qwen 2 7B (Free)</option>
+                        <option value="or_phi3">Microsoft Phi-3 (Free)</option>
+                    </optgroup>
                     <optgroup label="High-Res Image Models">
-                        <option value="pollinations_img">Dummy Image Gen</option>
+                        <option value="pollinations_img">Dummy HD Image Gen</option>
                     </optgroup>
                 </select>
             </div>
@@ -151,7 +151,7 @@ def chat_ui():
                 <div class="chat-wrapper" id="chat-wrapper">
                     <div class="message-row">
                         <div class="message ai-message">
-                            <div class="ai-content">Hello! I am Dummy AI. The system is now cleaned up, ultra-fast, and features a ChatGPT-style interface. How can I help you today?</div>
+                            <div class="ai-content">Hello! I am Dummy AI. Image generation is now upgraded to HD/4K quality. Try generating an image!</div>
                         </div>
                     </div>
                 </div>
@@ -201,7 +201,6 @@ def chat_ui():
                 }
             }
 
-            // Fixed Logic for Like and Dislike
             function handleFeedback(btn, type) {
                 const container = btn.closest('.message-actions');
                 const likeBtn = container.querySelector('.like-btn');
@@ -319,22 +318,35 @@ def chat_with_ai(request: ChatRequest):
             res = mistral_client.chat.completions.create(model="mistral-tiny", messages=messages)
             return {"response": res.choices[0].message.content}
             
-        elif request.provider == "openrouter":
-            if not openrouter_client: raise Exception("OPENROUTER_API_KEY is missing.")
-            res = openrouter_client.chat.completions.create(model="liquid/lfm-3-1.7b:free", messages=messages)
-            return {"response": res.choices[0].message.content}
-
         elif request.provider == "cohere":
             if not cohere_client: raise Exception("COHERE_API_KEY is missing.")
             res = cohere_client.chat(message=request.prompt, preamble=SYSTEM_INSTRUCTION, model="command-r-08-2024")
             return {"response": res.text}
 
-        # ==================== IMAGE MODELS ====================
+        # ==================== OPENROUTER FREE MODELS ====================
+        elif request.provider.startswith("or_"):
+            if not openrouter_client: raise Exception("OPENROUTER_API_KEY is missing.")
+            
+            # Map the provider slug to the actual OpenRouter model ID
+            model_map = {
+                "or_liquid": "liquid/lfm-3-1.7b:free",
+                "or_llama3": "meta-llama/llama-3-8b-instruct:free",
+                "or_qwen": "qwen/qwen-2-7b-instruct:free",
+                "or_phi3": "microsoft/phi-3-mini-128k-instruct:free"
+            }
+            
+            target_model = model_map.get(request.provider)
+            res = openrouter_client.chat.completions.create(model=target_model, messages=messages)
+            return {"response": res.choices[0].message.content}
+
+        # ==================== HIGH-RES IMAGE MODEL ====================
         elif request.provider == "pollinations_img":
-            enhanced_prompt = f"{request.prompt}, highly detailed, 4k resolution, masterpiece, professional lighting, centered"
+            enhanced_prompt = f"{request.prompt}, masterpiece, 4k resolution, high quality, highly detailed, sharp focus"
             encoded_prompt = urllib.parse.quote(enhanced_prompt)
             seed = random.randint(1, 100000)
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?seed={seed}&nologo=true"
+            
+            # Added width=1024 and height=1024 for High Resolution
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?seed={seed}&width=1024&height=1024&nologo=true"
             
             img_response = requests.get(image_url)
             if img_response.status_code == 200:
@@ -356,7 +368,7 @@ def chat_with_ai(request: ChatRequest):
                 </div>
                 """}
             else:
-                raise Exception("Image generation failed.")
+                raise Exception("Image generation failed. Try a different prompt.")
 
         else:
             raise Exception("Invalid Provider.")
