@@ -4,6 +4,7 @@ import requests
 import base64
 import random
 import io
+import re
 from typing import Optional
 from PIL import Image as PILImage
 from fastapi import FastAPI, HTTPException
@@ -40,16 +41,19 @@ together_key = os.environ.get("TOGETHER_API_KEY")
 # Data Models & System Instructions
 # ==========================================
 
-# Fixed: Added Optional[str] so it accepts requests without images without throwing [object Object] errors.
 class ChatRequest(BaseModel):
     prompt: str
     provider: str = "gemini"
     image_data: Optional[str] = None
 
+# Updated System Instructions for accurate AI Identity
 SYSTEM_INSTRUCTION = (
     "Your name is Dummy AI. You were created by OpenDev. "
-    "Whenever someone asks about your name, identity, or who created you, you must state that your name is Dummy AI and you were created by OpenDev. "
-    "Respond in the same language the user uses."
+    "If someone asks who created you, say OpenDev. "
+    "If someone asks who is the founder or creator of OpenDev, state clearly that it is MD Albi Rahman (also known as Alvi). "
+    "If someone asks about the location or address of your founder, state it is Gomdandi, Munsirhat, Boalkhali, Chittagong, Bangladesh. "
+    "Do not provide all this information at once unprompted. Only answer the specific question the user asks. "
+    "Be polite, professional, and answer in the same language the user uses."
 )
 
 # ==========================================
@@ -96,6 +100,7 @@ def chat_ui():
             .action-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
             .action-btn:hover { background: #2f2f2f; color: #fff; }
             .action-btn.active { color: var(--accent); }
+            .action-btn.speaking { color: #10a37f; animation: pulse 1.5s infinite; }
             .action-btn svg { width: 16px; height: 16px; fill: currentColor; }
 
             .image-wrapper { position: relative; display: inline-block; margin-top: 10px; }
@@ -172,7 +177,7 @@ def chat_ui():
                 <div class="chat-wrapper" id="chat-wrapper">
                     <div class="message-row">
                         <div class="message ai-message">
-                            <div class="ai-content">Hello! I am Dummy AI. The structural error has been fixed. Text, voice, and image uploads will now work flawlessly!</div>
+                            <div class="ai-content">Hello! I am Dummy AI. My identity is now fully configured, and you can listen to my responses using the Voice Speaker button below!</div>
                         </div>
                     </div>
                 </div>
@@ -303,6 +308,29 @@ def chat_ui():
                 }
             }
 
+            // Text to Speech Function (Read Aloud)
+            function readAloud(btn) {
+                const contentDiv = btn.closest('.ai-message').querySelector('.ai-content');
+                if(contentDiv) {
+                    window.speechSynthesis.cancel();
+                    
+                    const text = contentDiv.innerText || contentDiv.textContent;
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    
+                    // Auto detect language based on Bengali characters
+                    const isBengali = /[অ-য়]/.test(text);
+                    utterance.lang = isBengali ? 'bn-BD' : 'en-US';
+                    
+                    btn.classList.add('speaking');
+                    
+                    utterance.onend = function() {
+                        btn.classList.remove('speaking');
+                    };
+                    
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+
             function regenerateLast() {
                 if (lastUserPrompt) {
                     document.getElementById('user-input').value = lastUserPrompt;
@@ -327,6 +355,9 @@ def chat_ui():
             function getActionButtonsHTML() {
                 return `
                 <div class="message-actions">
+                    <button class="action-btn" onclick="readAloud(this)" title="Read Aloud (Voice)">
+                        <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                    </button>
                     <button class="action-btn" onclick="copyText(this)" title="Copy">
                         <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                     </button>
@@ -367,7 +398,6 @@ def chat_ui():
                 userRow.innerHTML = userHTML;
                 chatWrapper.appendChild(userRow);
 
-                // Fixed: Only send image_data if it exists to avoid null validation errors
                 const payload = { prompt: text || "Describe this image", provider: provider };
                 if (uploadedImageBase64) {
                     payload.image_data = uploadedImageBase64;
@@ -398,7 +428,6 @@ def chat_ui():
                     if (response.ok && data.response) {
                         aiMsg.innerHTML = `<div class="ai-content">${data.response}</div>` + getActionButtonsHTML();
                     } else {
-                        // Better error parsing for [object Object]
                         let errText = "Error processing request.";
                         if (data.detail) {
                             errText = typeof data.detail === 'object' ? JSON.stringify(data.detail) : data.detail;
@@ -477,7 +506,7 @@ def chat_with_ai(request: ChatRequest):
 
         # ==================== HIGH-RES IMAGE MODELS ====================
         elif request.provider == "together_img":
-            if not together_key: raise Exception("TOGETHER_API_KEY is missing.")
+            if not together_key: raise Exception("TOGETHER_API_KEY is missing. Check your Render Environment Variables.")
             
             url = "https://api.together.xyz/v1/images/generations"
             headers = {"Authorization": f"Bearer {together_key}"}
