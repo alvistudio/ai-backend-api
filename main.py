@@ -46,11 +46,11 @@ class ChatRequest(BaseModel):
     provider: str = "gemini"
     image_data: Optional[str] = None
 
-# Updated System Instructions for accurate AI Identity
+# Updated System Instructions for accurate AI Identity & Spelling
 SYSTEM_INSTRUCTION = (
     "Your name is Dummy AI. You were created by OpenDev. "
     "If someone asks who created you, say OpenDev. "
-    "If someone asks who is the founder or creator of OpenDev, state clearly that it is MD Albi Rahman (also known as Alvi). "
+    "If someone asks who is the founder or creator of OpenDev, state clearly that it is MD Alvi Rahman. "
     "If someone asks about the location or address of your founder, state it is Gomdandi, Munsirhat, Boalkhali, Chittagong, Bangladesh. "
     "Do not provide all this information at once unprompted. Only answer the specific question the user asks. "
     "Be polite, professional, and answer in the same language the user uses."
@@ -87,10 +87,17 @@ def chat_ui():
             .chat-wrapper { max-width: 800px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
             
             .message-row { display: flex; width: 100%; gap: 16px; }
-            .message-row.user { justify-content: flex-end; }
+            .message-row.user { justify-content: flex-end; position: relative; }
             
             .message { line-height: 1.6; font-size: 1rem; word-wrap: break-word; white-space: pre-wrap; max-width: 85%; }
-            .user-message { background-color: #2f2f2f; padding: 12px 20px; border-radius: 24px; border-bottom-right-radius: 4px; color: #fff; display: flex; flex-direction: column; gap: 10px; }
+            .user-message { background-color: #2f2f2f; padding: 12px 20px; border-radius: 24px; border-bottom-right-radius: 4px; color: #fff; display: flex; flex-direction: column; gap: 10px; position: relative; }
+            
+            /* User Edit Button */
+            .user-edit-btn { position: absolute; left: -35px; top: 10px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; opacity: 0; transition: 0.2s; padding: 5px; border-radius: 50%; }
+            .message-row.user:hover .user-edit-btn { opacity: 1; }
+            .user-edit-btn:hover { background: #2f2f2f; color: #fff; }
+            .user-edit-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
             .user-uploaded-img { max-width: 250px; border-radius: 8px; }
             .ai-message { background-color: transparent; color: var(--text-main); width: 100%; display: flex; flex-direction: column; }
             .ai-content { margin-bottom: 5px; }
@@ -136,6 +143,7 @@ def chat_ui():
                 .message { max-width: 95%; }
                 .message-actions { opacity: 1; }
                 .icon-download-btn { opacity: 1; }
+                .user-edit-btn { display: none; }
             }
         </style>
     </head>
@@ -177,7 +185,7 @@ def chat_ui():
                 <div class="chat-wrapper" id="chat-wrapper">
                     <div class="message-row">
                         <div class="message ai-message">
-                            <div class="ai-content">Hello! I am Dummy AI. My identity is now fully configured, and you can listen to my responses using the Voice Speaker button below!</div>
+                            <div class="ai-content">Hello! I am Dummy AI v0.1. Try out the new Edit Message feature and improved voice reading engine. How can I assist you today?</div>
                         </div>
                     </div>
                 </div>
@@ -233,28 +241,14 @@ def chat_ui():
                     autoResize(inputField);
                 };
 
-                recognition.onerror = function(event) {
-                    stopRecordingUI();
-                };
-
-                recognition.onend = function() {
-                    stopRecordingUI();
-                };
+                recognition.onerror = function(event) { stopRecordingUI(); };
+                recognition.onend = function() { stopRecordingUI(); };
             }
 
             function toggleSpeechRecognition() {
-                if (!recognition) {
-                    alert("Your browser does not support Voice Input.");
-                    return;
-                }
-                if (isRecording) {
-                    recognition.stop();
-                    stopRecordingUI();
-                } else {
-                    recognition.start();
-                    document.getElementById('mic-btn').classList.add('recording');
-                    isRecording = true;
-                }
+                if (!recognition) { alert("Your browser does not support Voice Input."); return; }
+                if (isRecording) { recognition.stop(); stopRecordingUI(); } 
+                else { recognition.start(); document.getElementById('mic-btn').classList.add('recording'); isRecording = true; }
             }
 
             function stopRecordingUI() {
@@ -276,7 +270,6 @@ def chat_ui():
                         uploadedImageBase64 = base64String.split(',')[1]; 
                         document.getElementById('image-preview').src = base64String;
                         document.getElementById('image-preview-container').style.display = 'block';
-                        
                         document.getElementById('provider-select').value = 'gemini';
                     };
                     reader.readAsDataURL(file);
@@ -308,27 +301,43 @@ def chat_ui():
                 }
             }
 
-            // Text to Speech Function (Read Aloud)
+            // Advanced Text to Speech Logic (Detects Bengali vs English)
             function readAloud(btn) {
                 const contentDiv = btn.closest('.ai-message').querySelector('.ai-content');
                 if(contentDiv) {
-                    window.speechSynthesis.cancel();
+                    window.speechSynthesis.cancel(); // Stop current speech
                     
                     const text = contentDiv.innerText || contentDiv.textContent;
                     const utterance = new SpeechSynthesisUtterance(text);
                     
-                    // Auto detect language based on Bengali characters
-                    const isBengali = /[অ-য়]/.test(text);
+                    // Regex to check for Bengali characters
+                    const isBengali = /[\u0980-\u09FF]/.test(text);
                     utterance.lang = isBengali ? 'bn-BD' : 'en-US';
                     
-                    btn.classList.add('speaking');
+                    // Try to find natural/premium voices provided by the browser/OS
+                    const voices = window.speechSynthesis.getVoices();
+                    let selectedVoice = voices.find(v => v.lang === utterance.lang && (v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Natural')));
                     
-                    utterance.onend = function() {
-                        btn.classList.remove('speaking');
-                    };
+                    if (!selectedVoice) {
+                        selectedVoice = voices.find(v => v.lang.startsWith(isBengali ? 'bn' : 'en'));
+                    }
+                    
+                    if (selectedVoice) utterance.voice = selectedVoice;
+                    
+                    btn.classList.add('speaking');
+                    utterance.onend = function() { btn.classList.remove('speaking'); };
+                    utterance.onerror = function() { btn.classList.remove('speaking'); };
                     
                     window.speechSynthesis.speak(utterance);
                 }
+            }
+
+            // Edit User Message (Gemini style)
+            function editMessage(textToEdit) {
+                const inputField = document.getElementById('user-input');
+                inputField.value = textToEdit;
+                autoResize(inputField);
+                inputField.focus();
             }
 
             function regenerateLast() {
@@ -373,6 +382,13 @@ def chat_ui():
                 </div>`;
             }
 
+            // Map provider names to short Developer codes
+            const providerCodes = {
+                'gemini': '[G]', 'groq': '[Gr]', 'mistral': '[M]', 'cohere': '[C]',
+                'or_llama3': '[OR-L]', 'or_gemma': '[OR-G]', 'or_liquid': '[OR-Lq]',
+                'together_img': '[T]', 'pollinations_img': '[P]'
+            };
+
             async function sendMessage(isRegenerate = false) {
                 const inputField = document.getElementById('user-input');
                 const chatWrapper = document.getElementById('chat-wrapper');
@@ -381,15 +397,21 @@ def chat_ui():
                 
                 const text = inputField.value.trim();
                 const provider = providerSelect.value;
-                const providerName = providerSelect.options[providerSelect.selectedIndex].text;
+                const devCode = providerCodes[provider] || '[?]';
 
                 if (!text && !uploadedImageBase64) return;
                 
                 if (!isRegenerate) lastUserPrompt = text;
 
+                // Create User Message Row with Edit Button
                 const userRow = document.createElement('div');
                 userRow.className = 'message-row user';
-                let userHTML = `<div class="message user-message">`;
+                let userHTML = `
+                    <button class="user-edit-btn" onclick="editMessage('${text.replace(/'/g, "\\'")}')" title="Edit Message">
+                        <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    </button>
+                    <div class="message user-message">`;
+                
                 if (uploadedImageBase64) {
                     userHTML += `<img src="data:image/jpeg;base64,${uploadedImageBase64}" class="user-uploaded-img">`;
                 }
@@ -412,7 +434,9 @@ def chat_ui():
                 aiRow.className = 'message-row';
                 const aiMsg = document.createElement('div');
                 aiMsg.className = 'message ai-message';
-                aiMsg.innerHTML = `<div class="ai-content loading-text">Generating via ${providerName}...</div>`;
+                
+                // White-labeled processing indicator
+                aiMsg.innerHTML = `<div class="ai-content loading-text">Dummy AI v0.1 processing... ${devCode}</div>`;
                 aiRow.appendChild(aiMsg);
                 chatWrapper.appendChild(aiRow);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
