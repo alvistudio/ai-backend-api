@@ -6,3 +6,4 @@ openai
 cohere
 pillow
 pydantic
+edge-tts
