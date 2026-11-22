@@ -4,11 +4,11 @@ import requests
 import base64
 import random
 import io
-import re
+import edge_tts
 from typing import Optional
 from PIL import Image as PILImage
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from google import genai
 from openai import OpenAI
@@ -43,17 +43,22 @@ together_key = os.environ.get("TOGETHER_API_KEY")
 
 class ChatRequest(BaseModel):
     prompt: str
-    provider: str = "gemini"
+    provider: str = "buvu_01"
     image_data: Optional[str] = None
 
-# Updated System Instructions for accurate AI Identity & Spelling
+class TTSRequest(BaseModel):
+    text: str
+
+# Buvu AI 0.1 - Osimm (osimm.com) Identity & Charming Persona
 SYSTEM_INSTRUCTION = (
-    "Your name is Dummy AI. You were created by OpenDev. "
-    "If someone asks who created you, say OpenDev. "
-    "If someone asks who is the founder or creator of OpenDev, state clearly that it is MD Alvi Rahman. "
-    "If someone asks about the location or address of your founder, state it is Gomdandi, Munsirhat, Boalkhali, Chittagong, Bangladesh. "
-    "Do not provide all this information at once unprompted. Only answer the specific question the user asks. "
-    "Be polite, professional, and answer in the same language the user uses."
+    "Your name is Buvu AI 0.1. You were created by Osimm (website: osimm.com). "
+    "Personality: You are charming, witty, slightly playful, and subtly flirty—like a close, charismatic companion. "
+    "Keep your tone engaging, warm, and confident, but always helpful and respectful. "
+    "Identity rules (Only answer if specifically asked, never dump all info at once): "
+    "- Creator/Company: Osimm (osimm.com). "
+    "- Founder of Osimm: MD Alvi Rahman. "
+    "- Founder's location: Gomdandi, Munsirhat, Boalkhali, Chittagong, Bangladesh. "
+    "Always reply in the exact language the user uses (Bengali or English)."
 )
 
 # ==========================================
@@ -68,20 +73,21 @@ def chat_ui():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Dummy AI - OpenDev</title>
+        <title>Buvu AI 0.1 - Osimm</title>
         <style>
-            :root { --bg-main: #212121; --bg-sidebar: #171717; --bg-chat: #212121; --bg-input: #2f2f2f; --text-main: #ececf1; --text-muted: #9b9b9b; --accent: #10a37f; }
+            :root { --bg-main: #18181b; --bg-sidebar: #121214; --bg-chat: #18181b; --bg-input: #27272a; --text-main: #f4f4f5; --text-muted: #a1a1aa; --accent: #ec4899; }
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
             body { background-color: var(--bg-main); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
             
-            .sidebar { width: 260px; background-color: var(--bg-sidebar); display: flex; flex-direction: column; padding: 15px; transition: all 0.3s ease; z-index: 100; }
-            .sidebar-header { font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-            .new-chat-btn { background-color: transparent; color: #fff; border: 1px solid #424242; padding: 10px; border-radius: 8px; text-align: left; cursor: pointer; font-size: 0.9rem; transition: 0.2s; display: flex; align-items: center; gap: 8px; }
-            .new-chat-btn:hover { background-color: #2f2f2f; }
+            .sidebar { width: 260px; background-color: var(--bg-sidebar); display: flex; flex-direction: column; padding: 15px; border-right: 1px solid #27272a; z-index: 100; }
+            .sidebar-header { font-size: 1.15rem; font-weight: 700; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+            .badge { background: linear-gradient(45deg, #ec4899, #8b5cf6); font-size: 0.7rem; padding: 2px 6px; border-radius: 6px; }
+            .new-chat-btn { background-color: transparent; color: #fff; border: 1px solid #3f3f46; padding: 10px; border-radius: 8px; text-align: left; cursor: pointer; font-size: 0.9rem; transition: 0.2s; display: flex; align-items: center; gap: 8px; }
+            .new-chat-btn:hover { background-color: #27272a; }
 
             .main-container { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-chat); position: relative; }
-            .chat-header { padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-chat); z-index: 10; font-weight: 600; font-size: 1.1rem; }
-            .provider-selector { background-color: var(--bg-input); color: #fff; border: 1px solid #424242; padding: 8px 12px; border-radius: 8px; outline: none; cursor: pointer; font-size: 0.9rem; }
+            .chat-header { padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; z-index: 10; font-weight: 600; font-size: 1.1rem; }
+            .provider-selector { background-color: var(--bg-input); color: #fff; border: 1px solid #3f3f46; padding: 8px 12px; border-radius: 8px; outline: none; cursor: pointer; font-size: 0.9rem; }
             
             #chat-container { flex: 1; overflow-y: auto; padding: 30px 20px; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; }
             .chat-wrapper { max-width: 800px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
@@ -90,12 +96,11 @@ def chat_ui():
             .message-row.user { justify-content: flex-end; position: relative; }
             
             .message { line-height: 1.6; font-size: 1rem; word-wrap: break-word; white-space: pre-wrap; max-width: 85%; }
-            .user-message { background-color: #2f2f2f; padding: 12px 20px; border-radius: 24px; border-bottom-right-radius: 4px; color: #fff; display: flex; flex-direction: column; gap: 10px; position: relative; }
+            .user-message { background-color: #27272a; padding: 12px 20px; border-radius: 24px; border-bottom-right-radius: 4px; color: #fff; display: flex; flex-direction: column; gap: 10px; position: relative; }
             
-            /* User Edit Button */
             .user-edit-btn { position: absolute; left: -35px; top: 10px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; opacity: 0; transition: 0.2s; padding: 5px; border-radius: 50%; }
             .message-row.user:hover .user-edit-btn { opacity: 1; }
-            .user-edit-btn:hover { background: #2f2f2f; color: #fff; }
+            .user-edit-btn:hover { background: #27272a; color: #fff; }
             .user-edit-btn svg { width: 16px; height: 16px; fill: currentColor; }
 
             .user-uploaded-img { max-width: 250px; border-radius: 8px; }
@@ -105,20 +110,20 @@ def chat_ui():
             .message-actions { display: flex; gap: 4px; align-items: center; margin-top: 8px; opacity: 0; transition: opacity 0.2s; }
             .message-row:hover .message-actions { opacity: 1; }
             .action-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-            .action-btn:hover { background: #2f2f2f; color: #fff; }
+            .action-btn:hover { background: #27272a; color: #fff; }
             .action-btn.active { color: var(--accent); }
-            .action-btn.speaking { color: #10a37f; animation: pulse 1.5s infinite; }
+            .action-btn.speaking { color: #ec4899; animation: pulse 1.2s infinite; }
             .action-btn svg { width: 16px; height: 16px; fill: currentColor; }
 
             .image-wrapper { position: relative; display: inline-block; margin-top: 10px; }
-            .gen-image { max-width: 100%; display: block; border-radius: 12px; }
-            .icon-download-btn { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(4px); transition: 0.2s; opacity: 0; }
+            .gen-image { max-width: 100%; display: block; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+            .icon-download-btn { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); border: none; color: #fff; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(4px); transition: 0.2s; opacity: 0; }
             .image-wrapper:hover .icon-download-btn { opacity: 1; }
-            .icon-download-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.05); }
+            .icon-download-btn:hover { background: rgba(0,0,0,0.9); transform: scale(1.05); }
             .icon-download-btn svg { width: 18px; height: 18px; fill: currentColor; }
 
             .input-area { padding: 20px; padding-bottom: 30px; }
-            .input-box-wrapper { max-width: 800px; width: 100%; margin: 0 auto; background-color: var(--bg-input); border: 1px solid #424242; border-radius: 24px; padding: 12px 16px; display: flex; flex-direction: column; position: relative; }
+            .input-box-wrapper { max-width: 800px; width: 100%; margin: 0 auto; background-color: var(--bg-input); border: 1px solid #3f3f46; border-radius: 24px; padding: 12px 16px; display: flex; flex-direction: column; position: relative; }
             
             #image-preview-container { display: none; margin-bottom: 10px; position: relative; width: fit-content; }
             #image-preview { max-height: 100px; border-radius: 8px; }
@@ -126,14 +131,14 @@ def chat_ui():
             
             .input-controls { display: flex; gap: 10px; align-items: flex-end; }
             .util-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 50%; transition: 0.2s; }
-            .util-btn:hover { background: #383838; color: #fff; }
-            .util-btn.recording { color: #ff4a4a; animation: pulse 1.5s infinite; }
-            @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+            .util-btn:hover { background: #3f3f46; color: #fff; }
+            .util-btn.recording { color: #ec4899; animation: pulse 1.2s infinite; }
+            @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
             
             textarea { flex: 1; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; resize: none; max-height: 200px; line-height: 1.5; padding: 8px 0; }
             
-            .send-btn { background-color: var(--text-main); color: var(--bg-chat); border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-            .send-btn:hover { opacity: 0.8; }
+            .send-btn { background: linear-gradient(45deg, #ec4899, #8b5cf6); color: #fff; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+            .send-btn:hover { opacity: 0.9; transform: scale(1.05); }
             .send-btn svg { width: 16px; height: 16px; fill: currentColor; }
             
             .loading-text { color: var(--text-muted); font-style: italic; }
@@ -150,8 +155,8 @@ def chat_ui():
     <body>
         <div class="sidebar">
             <div class="sidebar-header">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                OpenDev AI
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Osimm AI <span class="badge">BETA</span>
             </div>
             <button class="new-chat-btn" onclick="location.reload()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -161,22 +166,22 @@ def chat_ui():
 
         <div class="main-container">
             <div class="chat-header">
-                <span>Dummy AI</span>
+                <span>Buvu AI <span style="font-size: 0.8rem; color: #ec4899;">v0.1</span></span>
                 <select id="provider-select" class="provider-selector">
-                    <optgroup label="Fast Text Models">
-                        <option value="gemini">Gemini API (Vision + Text)</option>
-                        <option value="groq">Groq API (Ultra Fast)</option>
-                        <option value="mistral">Mistral API</option>
-                        <option value="cohere">Cohere API</option>
+                    <optgroup label="Core Models">
+                        <option value="buvu_01">Buvu AI 0.1 (Default)</option>
+                        <option value="gemini">Gemini Pro Vision</option>
+                        <option value="groq">Groq Fast Engine</option>
+                        <option value="mistral">Mistral AI</option>
+                        <option value="cohere">Cohere Command</option>
                     </optgroup>
-                    <optgroup label="OpenRouter (Live Free Models)">
-                        <option value="or_llama3">Meta Llama 3.1 8B</option>
-                        <option value="or_gemma">Google Gemma 2 9B</option>
-                        <option value="or_liquid">Liquid LFM 1.7B</option>
+                    <optgroup label="OpenRouter Models">
+                        <option value="or_llama3">Llama 3.1 8B</option>
+                        <option value="or_gemma">Gemma 2 9B</option>
                     </optgroup>
-                    <optgroup label="High-Res Image Models">
-                        <option value="together_img">Together AI (FLUX 4K)</option>
-                        <option value="pollinations_img">Dummy Backup Gen</option>
+                    <optgroup label="HD Image Studio">
+                        <option value="flux_hd">Buvu Studio HD (FLUX)</option>
+                        <option value="together_img">Together FLUX Pro</option>
                     </optgroup>
                 </select>
             </div>
@@ -185,7 +190,7 @@ def chat_ui():
                 <div class="chat-wrapper" id="chat-wrapper">
                     <div class="message-row">
                         <div class="message ai-message">
-                            <div class="ai-content">Hello! I am Dummy AI v0.1. Try out the new Edit Message feature and improved voice reading engine. How can I assist you today?</div>
+                            <div class="ai-content">হ্যালো! আমি Buvu AI 0.1। বলো, আজ তোমার কোন কাজটা সহজ করে দেব? 😉✨</div>
                         </div>
                     </div>
                 </div>
@@ -208,7 +213,7 @@ def chat_ui():
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                         </button>
 
-                        <textarea id="user-input" rows="1" placeholder="Message Dummy AI..." oninput="autoResize(this)" onkeypress="handleKeyPress(event)"></textarea>
+                        <textarea id="user-input" rows="1" placeholder="Talk to Buvu AI 0.1..." oninput="autoResize(this)" onkeypress="handleKeyPress(event)"></textarea>
                         
                         <button class="send-btn" onclick="sendMessage()">
                             <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -223,6 +228,7 @@ def chat_ui():
             let uploadedImageBase64 = null;
             let recognition = null;
             let isRecording = false;
+            let currentAudio = null;
 
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -241,7 +247,7 @@ def chat_ui():
                     autoResize(inputField);
                 };
 
-                recognition.onerror = function(event) { stopRecordingUI(); };
+                recognition.onerror = function() { stopRecordingUI(); };
                 recognition.onend = function() { stopRecordingUI(); };
             }
 
@@ -270,7 +276,7 @@ def chat_ui():
                         uploadedImageBase64 = base64String.split(',')[1]; 
                         document.getElementById('image-preview').src = base64String;
                         document.getElementById('image-preview-container').style.display = 'block';
-                        document.getElementById('provider-select').value = 'gemini';
+                        document.getElementById('provider-select').value = 'buvu_01';
                     };
                     reader.readAsDataURL(file);
                 }
@@ -301,38 +307,45 @@ def chat_ui():
                 }
             }
 
-            // Advanced Text to Speech Logic (Detects Bengali vs English)
-            function readAloud(btn) {
+            async function readAloud(btn) {
                 const contentDiv = btn.closest('.ai-message').querySelector('.ai-content');
-                if(contentDiv) {
-                    window.speechSynthesis.cancel(); // Stop current speech
+                if(!contentDiv) return;
+
+                if (currentAudio) {
+                    currentAudio.pause();
+                    currentAudio = null;
+                    document.querySelectorAll('.action-btn.speaking').forEach(b => b.classList.remove('speaking'));
+                }
+
+                const text = contentDiv.innerText || contentDiv.textContent;
+                if (!text.trim()) return;
+
+                btn.classList.add('speaking');
+
+                try {
+                    const response = await fetch('/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: text })
+                    });
+
+                    if (!response.ok) throw new Error("TTS failed");
+
+                    const blob = await response.blob();
+                    const audioUrl = URL.createObjectURL(blob);
+                    currentAudio = new Audio(audioUrl);
                     
-                    const text = contentDiv.innerText || contentDiv.textContent;
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    
-                    // Regex to check for Bengali characters
-                    const isBengali = /[\u0980-\u09FF]/.test(text);
-                    utterance.lang = isBengali ? 'bn-BD' : 'en-US';
-                    
-                    // Try to find natural/premium voices provided by the browser/OS
-                    const voices = window.speechSynthesis.getVoices();
-                    let selectedVoice = voices.find(v => v.lang === utterance.lang && (v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Natural')));
-                    
-                    if (!selectedVoice) {
-                        selectedVoice = voices.find(v => v.lang.startsWith(isBengali ? 'bn' : 'en'));
-                    }
-                    
-                    if (selectedVoice) utterance.voice = selectedVoice;
-                    
-                    btn.classList.add('speaking');
-                    utterance.onend = function() { btn.classList.remove('speaking'); };
-                    utterance.onerror = function() { btn.classList.remove('speaking'); };
-                    
-                    window.speechSynthesis.speak(utterance);
+                    currentAudio.onended = () => {
+                        btn.classList.remove('speaking');
+                        currentAudio = null;
+                    };
+                    currentAudio.play();
+                } catch (err) {
+                    btn.classList.remove('speaking');
+                    alert("Voice engine busy. Please try again.");
                 }
             }
 
-            // Edit User Message (Gemini style)
             function editMessage(textToEdit) {
                 const inputField = document.getElementById('user-input');
                 inputField.value = textToEdit;
@@ -364,7 +377,7 @@ def chat_ui():
             function getActionButtonsHTML() {
                 return `
                 <div class="message-actions">
-                    <button class="action-btn" onclick="readAloud(this)" title="Read Aloud (Voice)">
+                    <button class="action-btn" onclick="readAloud(this)" title="Listen (Natural Voice)">
                         <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                     </button>
                     <button class="action-btn" onclick="copyText(this)" title="Copy">
@@ -382,11 +395,9 @@ def chat_ui():
                 </div>`;
             }
 
-            // Map provider names to short Developer codes
             const providerCodes = {
-                'gemini': '[G]', 'groq': '[Gr]', 'mistral': '[M]', 'cohere': '[C]',
-                'or_llama3': '[OR-L]', 'or_gemma': '[OR-G]', 'or_liquid': '[OR-Lq]',
-                'together_img': '[T]', 'pollinations_img': '[P]'
+                'buvu_01': '[B-01]', 'gemini': '[G]', 'groq': '[Gr]', 'mistral': '[M]', 'cohere': '[C]',
+                'or_llama3': '[OR-L]', 'or_gemma': '[OR-G]', 'flux_hd': '[F-HD]', 'together_img': '[T-FX]'
             };
 
             async function sendMessage(isRegenerate = false) {
@@ -397,13 +408,11 @@ def chat_ui():
                 
                 const text = inputField.value.trim();
                 const provider = providerSelect.value;
-                const devCode = providerCodes[provider] || '[?]';
+                const devCode = providerCodes[provider] || '[B]';
 
                 if (!text && !uploadedImageBase64) return;
-                
                 if (!isRegenerate) lastUserPrompt = text;
 
-                // Create User Message Row with Edit Button
                 const userRow = document.createElement('div');
                 userRow.className = 'message-row user';
                 let userHTML = `
@@ -421,9 +430,7 @@ def chat_ui():
                 chatWrapper.appendChild(userRow);
 
                 const payload = { prompt: text || "Describe this image", provider: provider };
-                if (uploadedImageBase64) {
-                    payload.image_data = uploadedImageBase64;
-                }
+                if (uploadedImageBase64) payload.image_data = uploadedImageBase64;
 
                 inputField.value = '';
                 inputField.style.height = 'auto';
@@ -434,9 +441,7 @@ def chat_ui():
                 aiRow.className = 'message-row';
                 const aiMsg = document.createElement('div');
                 aiMsg.className = 'message ai-message';
-                
-                // White-labeled processing indicator
-                aiMsg.innerHTML = `<div class="ai-content loading-text">Dummy AI v0.1 processing... ${devCode}</div>`;
+                aiMsg.innerHTML = `<div class="ai-content loading-text">Buvu AI 0.1 thinking... ${devCode}</div>`;
                 aiRow.appendChild(aiMsg);
                 chatWrapper.appendChild(aiRow);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -475,6 +480,25 @@ def chat_ui():
     </html>
     """
 
+# ==========================================
+# Natural Human Voice Endpoint (Edge-TTS)
+# ==========================================
+@app.post("/tts")
+async def generate_speech(request: TTSRequest):
+    is_bengali = any('\u0980' <= char <= '\u09FF' for char in request.text)
+    voice = "bn-BD-NabanitaNeural" if is_bengali else "en-US-AriaNeural"
+    
+    communicate = edge_tts.Communicate(request.text, voice)
+    audio_bytes = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_bytes += chunk["data"]
+            
+    return Response(content=audio_bytes, media_type="audio/mpeg")
+
+# ==========================================
+# Main Chat & Image Generation Endpoint
+# ==========================================
 @app.post("/chat")
 def chat_with_ai(request: ChatRequest):
     messages = [
@@ -483,9 +507,8 @@ def chat_with_ai(request: ChatRequest):
     ]
     
     try:
-        # ==================== TEXT & VISION MODELS ====================
-        if request.provider == "gemini":
-            if not gemini_client: raise Exception("GEMINI_API_KEY is missing.")
+        if request.provider in ["buvu_01", "gemini"]:
+            if not gemini_client: raise Exception("Core API key is missing.")
             
             if request.image_data:
                 image_bytes = base64.b64decode(request.image_data)
@@ -501,12 +524,12 @@ def chat_with_ai(request: ChatRequest):
             
         elif request.provider == "groq":
             if not groq_client: raise Exception("GROQ_API_KEY is missing.")
-            res = groq_client.chat.completions.create(model="llama3-8b-8192", messages=messages)
+            res = groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages)
             return {"response": res.choices[0].message.content}
 
         elif request.provider == "mistral":
             if not mistral_client: raise Exception("MISTRAL_API_KEY is missing.")
-            res = mistral_client.chat.completions.create(model="mistral-tiny", messages=messages)
+            res = mistral_client.chat.completions.create(model="mistral-small-latest", messages=messages)
             return {"response": res.choices[0].message.content}
             
         elif request.provider == "cohere":
@@ -514,26 +537,47 @@ def chat_with_ai(request: ChatRequest):
             res = cohere_client.chat(message=request.prompt, preamble=SYSTEM_INSTRUCTION, model="command-r-08-2024")
             return {"response": res.text}
 
-        # ==================== OPENROUTER FREE MODELS ====================
         elif request.provider.startswith("or_"):
             if not openrouter_client: raise Exception("OPENROUTER_API_KEY is missing.")
-            
             model_map = {
                 "or_llama3": "meta-llama/llama-3.1-8b-instruct:free",
-                "or_gemma": "google/gemma-2-9b-it:free",
-                "or_liquid": "liquid/lfm-3-1.7b:free"
+                "or_gemma": "google/gemma-2-9b-it:free"
             }
-            
             target_model = model_map.get(request.provider)
             res = openrouter_client.chat.completions.create(model=target_model, messages=messages)
             return {"response": res.choices[0].message.content}
 
-        # ==================== HIGH-RES IMAGE MODELS ====================
+        elif request.provider == "flux_hd":
+            enhanced_prompt = f"{request.prompt}, ultra detailed, 8k resolution, cinematic lighting, sharp focus, masterpiece"
+            encoded_prompt = urllib.parse.quote(enhanced_prompt)
+            seed = random.randint(1, 999999)
+            
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?model=flux&seed={seed}&width=1024&height=1024&nologo=true"
+            
+            img_response = requests.get(image_url, timeout=30)
+            if img_response.status_code == 200:
+                img = PILImage.open(io.BytesIO(img_response.content))
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG", quality=95)
+                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                b64_url = f"data:image/jpeg;base64,{img_b64}"
+                
+                return {"response": f"""
+                <div class='image-wrapper'>
+                    <img src='{b64_url}' class='gen-image' />
+                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "Osimm_BuvuAI_HD.jpg")' title="Download HD Image">
+                        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    </button>
+                </div>
+                """}
+            else:
+                raise Exception("HD Image generation timed out. Try again.")
+
         elif request.provider == "together_img":
-            if not together_key: raise Exception("TOGETHER_API_KEY is missing. Check your Render Environment Variables.")
+            if not together_key: raise Exception("TOGETHER_API_KEY is missing in Environment Variables.")
             
             url = "https://api.together.xyz/v1/images/generations"
-            headers = {"Authorization": f"Bearer {together_key}"}
+            headers = {"Authorization": f"Bearer {together_key.strip()}"}
             payload = {
                 "model": "black-forest-labs/FLUX.1-schnell-Free",
                 "prompt": request.prompt,
@@ -551,7 +595,7 @@ def chat_with_ai(request: ChatRequest):
                 return {"response": f"""
                 <div class='image-wrapper'>
                     <img src='{b64_url}' class='gen-image' />
-                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "DummyAI_FLUX.jpg")' title="Download Image">
+                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "Osimm_BuvuAI_FLUX.jpg")' title="Download Image">
                         <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
                     </button>
                 </div>
@@ -559,37 +603,8 @@ def chat_with_ai(request: ChatRequest):
             else:
                 raise Exception(f"Together AI Error: {response.text}")
 
-        elif request.provider == "pollinations_img":
-            enhanced_prompt = f"{request.prompt}, masterpiece, 4k resolution, high quality, highly detailed, sharp focus"
-            encoded_prompt = urllib.parse.quote(enhanced_prompt)
-            seed = random.randint(1, 100000)
-            
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?seed={seed}&width=1024&height=1024&nologo=true"
-            
-            img_response = requests.get(image_url)
-            if img_response.status_code == 200:
-                img = PILImage.open(io.BytesIO(img_response.content))
-                width, height = img.size
-                img_cropped = img.crop((0, 0, width, height - 45))
-                
-                buffered = io.BytesIO()
-                img_cropped.save(buffered, format="JPEG")
-                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                b64_url = f"data:image/jpeg;base64,{img_b64}"
-                
-                return {"response": f"""
-                <div class='image-wrapper'>
-                    <img src='{b64_url}' class='gen-image' />
-                    <button class='icon-download-btn' onclick='downloadImage("{b64_url}", "DummyAI_Backup.jpg")' title="Download Image">
-                        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                    </button>
-                </div>
-                """}
-            else:
-                raise Exception("Image generation failed.")
-
         else:
-            raise Exception("Invalid Provider.")
+            raise Exception("Invalid Model Selected.")
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
